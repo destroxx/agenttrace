@@ -1,0 +1,32 @@
+# Local infrastructure for AgentTrace.
+#
+# Only PostgreSQL runs here: the API, web app and SDK are run directly on the
+# host during development so they reload quickly.
+#
+# Values come from the repo-root .env (copy it from .env.example first).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: agenttrace-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-agenttrace}
+      POSTGRES_USER: ${POSTGRES_USER:-agenttrace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      # Keeps initdb deterministic across developer machines.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agenttrace} -d ${POSTGRES_DB:-agenttrace}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  postgres_data:
+    name: agenttrace_postgres_data
