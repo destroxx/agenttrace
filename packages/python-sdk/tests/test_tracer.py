@@ -50,10 +50,9 @@ def test_trace_records_tool_calls() -> None:
 def test_trace_is_closed_when_the_agent_raises() -> None:
     tracer = AgentTracer(TracerConfig())
 
-    with pytest.raises(ValueError):
-        with tracer.trace("failing-agent") as trace:
-            tracer.record_tool_call("search", {"q": "shoes"})
-            raise ValueError("agent blew up")
+    with pytest.raises(ValueError), tracer.trace("failing-agent") as trace:
+        tracer.record_tool_call("search", {"q": "shoes"})
+        raise ValueError("agent blew up")
 
     assert not trace.is_open
     assert trace.ended_at is not None
@@ -71,10 +70,13 @@ def test_recording_outside_a_trace_is_an_error() -> None:
 def test_nested_traces_are_rejected() -> None:
     tracer = AgentTracer(TracerConfig())
 
-    with tracer.trace("outer"):
-        with pytest.raises(RuntimeError, match="already active"):
-            with tracer.trace("inner"):
-                pass
+    # Kept nested: the assertion is that *entering* the inner trace raises,
+    # which a single flattened `with` would not show.
+    with tracer.trace("outer"), pytest.raises(  # noqa: SIM117
+        RuntimeError, match="already active"
+    ):
+        with tracer.trace("inner"):
+            pass
 
 
 def test_closed_trace_rejects_further_tool_calls() -> None:

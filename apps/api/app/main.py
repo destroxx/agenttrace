@@ -5,13 +5,15 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.api import api_router
 from app.config import get_settings
 from app.db.session import dispose_engine
+from app.services.exceptions import ConflictError, NotFoundError
 
 
 @asynccontextmanager
@@ -19,6 +21,20 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Release pooled database connections on shutdown."""
     yield
     await dispose_engine()
+
+
+async def _not_found_handler(_: Request, exc: NotFoundError) -> JSONResponse:
+    """Answer a missing entity with 404."""
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND, content={"detail": exc.detail}
+    )
+
+
+async def _conflict_handler(_: Request, exc: ConflictError) -> JSONResponse:
+    """Answer a state conflict with 409."""
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT, content={"detail": exc.detail}
+    )
 
 
 def create_app() -> FastAPI:
@@ -41,6 +57,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Services raise domain errors; the mapping onto HTTP lives here, so no
+    # route handler has to translate one into the other.
+    app.add_exception_handler(NotFoundError, _not_found_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(ConflictError, _conflict_handler)  # type: ignore[arg-type]
+
     app.include_router(api_router)
     return app
 

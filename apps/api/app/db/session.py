@@ -26,7 +26,7 @@ def get_engine() -> AsyncEngine:
     """Return the process-wide async engine."""
     settings = get_settings()
     return create_async_engine(
-        settings.database_url,
+        settings.sqlalchemy_url,
         echo=settings.debug,
         pool_pre_ping=True,
         future=True,

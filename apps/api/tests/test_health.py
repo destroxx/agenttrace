@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 from fastapi import FastAPI
 from httpx import AsyncClient
 from sqlalchemy.exc import OperationalError
@@ -81,10 +80,11 @@ async def test_health_error_does_not_leak_credentials(
     assert "postgresql+asyncpg://" not in response.text
 
 
-@pytest.mark.integration
-async def test_health_against_real_database(app: FastAPI, client: AsyncClient) -> None:
-    """End-to-end probe against a running Postgres (see `make` targets / README)."""
-    response = await client.get("/health")
+async def test_health_against_real_database(api_client: AsyncClient) -> None:
+    """End-to-end probe against the live test database."""
+    response = await api_client.get("/health")
 
     assert response.status_code == 200, response.text
-    assert response.json()["checks"]["database"]["status"] == "up"
+    report = response.json()["checks"]["database"]
+    assert report["status"] == "up"
+    assert report["latency_ms"] >= 0

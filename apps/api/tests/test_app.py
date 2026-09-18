@@ -24,11 +24,28 @@ def test_openapi_documents_the_health_endpoint(app: FastAPI) -> None:
     assert "503" in responses
 
 
-def test_app_exposes_only_the_health_endpoint(app: FastAPI) -> None:
-    """This milestone ships one endpoint; guards against accidental surface."""
+def test_app_exposes_exactly_the_documented_surface(app: FastAPI) -> None:
+    """Guards against endpoints appearing by accident."""
     documented = set(app.openapi()["paths"])
 
-    assert documented == {"/health"}
+    assert documented == {
+        "/health",
+        "/api/v1/projects",
+        "/api/v1/projects/{project_id}",
+        "/api/v1/projects/{project_id}/runs",
+        "/api/v1/runs/{run_id}",
+        "/api/v1/runs/{run_id}/complete",
+        "/api/v1/runs/{run_id}/events",
+    }
+
+
+def test_domain_errors_are_documented_on_the_endpoints(app: FastAPI) -> None:
+    """404 and 409 are part of the contract, not incidental behaviour."""
+    paths = app.openapi()["paths"]
+
+    assert "404" in paths["/api/v1/projects/{project_id}"]["get"]["responses"]
+    assert "409" in paths["/api/v1/runs/{run_id}/complete"]["post"]["responses"]
+    assert "409" in paths["/api/v1/runs/{run_id}/events"]["post"]["responses"]
 
 
 async def test_cors_allows_the_web_app_origin(app: FastAPI) -> None:
