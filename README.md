@@ -158,8 +158,8 @@ because it describes the process rather than the API contract.
 | GET | `/api/v1/runs/{run_id}/events` | List events ordered by `sequence` |
 
 Errors: `404` for a missing project or run, `409` for a duplicate event
-sequence or a run that has already finished, `422` for a malformed body or a
-path id that is not a UUID.
+sequence, for a run that has already finished, or for an event posted to a
+finished run, `422` for a malformed body or a path id that is not a UUID.
 
 Paginated endpoints take `?page=1&page_size=20` (`page_size` caps at 100) and
 return `{"items": [...], "total": n, "page": n, "page_size": n}`.
@@ -208,6 +208,26 @@ curl -s $API/runs/$RUN
 
 A run that has already finished answers `409` rather than overwriting its
 recorded output, and two events cannot claim the same `sequence` within a run.
+A finished run also rejects new events with `409`: once closed, a trace is a
+frozen recording.
+
+---
+
+## Troubleshooting
+
+**The API cannot authenticate, but `docker compose ps` says `(healthy)`.**
+`POSTGRES_PASSWORD` is only applied when the data volume is first created, so
+changing it in `.env` afterwards leaves the database expecting the old one. To
+adopt the new password, recreate the volume — **this deletes all local data**:
+
+```bash
+docker compose down -v && docker compose up -d
+```
+
+Note that `(healthy)` does not prove password authentication works. The
+healthcheck runs `pg_isready` over the container's local socket, where
+`pg_hba.conf` uses `trust`, so it never checks a password. Only a TCP
+connection — which is how the API connects — exercises authentication.
 
 ---
 

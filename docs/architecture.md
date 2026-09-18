@@ -107,6 +107,11 @@ uploaded in batches, timestamps collide at the resolution the database stores,
 and a recorder may buffer out of order. Replay needs a total order the client
 controls, so the client supplies it, and the unique constraint enforces it.
 
+**Terminal runs are frozen.** A run in `completed` or `failed` state rejects
+new events with a conflict, and both closing a run and appending to it take a
+row lock on the run, so the two cannot interleave and leave an event stamped
+after the run was closed.
+
 **Separate Pydantic schemas and ORM models.** The models describe how rows are
 stored; the schemas describe what the API accepts and returns. Serialising ORM
 objects directly would make every column rename a breaking API change, would

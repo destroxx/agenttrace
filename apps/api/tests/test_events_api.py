@@ -128,6 +128,61 @@ async def test_the_same_sequence_is_fine_in_a_different_run(
     ).status_code == 201
 
 
+async def test_a_completed_run_rejects_new_events(api_client: AsyncClient) -> None:
+    """A finished run is a frozen recording."""
+    run_id = await _run(api_client)
+    await api_client.post(
+        f"/api/v1/runs/{run_id}/events",
+        json={"sequence": 1, "event_type": "agent_start"},
+    )
+    await api_client.post(
+        f"/api/v1/runs/{run_id}/complete",
+        json={"output": {"message": "done"}, "status": "completed"},
+    )
+
+    response = await api_client.post(
+        f"/api/v1/runs/{run_id}/events",
+        json={"sequence": 2, "event_type": "tool_call"},
+    )
+
+    assert response.status_code == 409
+    assert "frozen" in response.json()["detail"]
+
+    events = (await api_client.get(f"/api/v1/runs/{run_id}/events")).json()
+    assert [event["sequence"] for event in events] == [1]
+
+
+async def test_a_failed_run_rejects_new_events(api_client: AsyncClient) -> None:
+    """Failure freezes the trace too -- that is what makes it worth keeping."""
+    run_id = await _run(api_client)
+    await api_client.post(
+        f"/api/v1/runs/{run_id}/complete",
+        json={"output": {"error": "tool timeout"}, "status": "failed"},
+    )
+
+    response = await api_client.post(
+        f"/api/v1/runs/{run_id}/events",
+        json={"sequence": 1, "event_type": "error"},
+    )
+
+    assert response.status_code == 409
+    assert "failed" in response.json()["detail"]
+    assert (await api_client.get(f"/api/v1/runs/{run_id}/events")).json() == []
+
+
+async def test_a_running_run_still_accepts_events(api_client: AsyncClient) -> None:
+    """Regression guard: the freeze must not catch runs that are still open."""
+    run_id = await _run(api_client)
+
+    response = await api_client.post(
+        f"/api/v1/runs/{run_id}/events",
+        json={"sequence": 1, "event_type": "agent_start"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["sequence"] == 1
+
+
 async def test_response_may_be_a_non_object(api_client: AsyncClient) -> None:
     """Rule 3: a tool can return a list or a scalar, not only an object."""
     run_id = await _run(api_client)

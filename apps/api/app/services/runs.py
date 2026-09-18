@@ -74,8 +74,15 @@ class RunService:
         A run that has already finished is not re-completed: overwriting the
         output of a recorded trace would silently destroy the thing AgentTrace
         exists to preserve.
+
+        The row is locked rather than read through `get`, so that closing a run
+        and appending an event to it are serialized against each other. Whoever
+        takes the lock second sees the other's committed state and conflicts,
+        instead of both deciding on the same stale `running`.
         """
-        run = await self.get(run_id)
+        run = await self._session.get(Run, run_id, with_for_update=True)
+        if run is None:
+            raise NotFoundError("Run", run_id)
         if run.is_terminal:
             raise ConflictError(
                 f"Run {run_id} already finished with status {run.status!r}."
