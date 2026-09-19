@@ -26,12 +26,14 @@ TRACE = [
     EventCreate(
         sequence=2,
         event_type="tool_call",
+        call_id="call_abc123",
         tool_name="get_order",
         arguments={"order_id": "12345"},
     ),
     EventCreate(
         sequence=3,
         event_type="tool_response",
+        call_id="call_abc123",
         tool_name="get_order",
         response={"order_id": "12345", "status": "in_transit", "eta": "2026-09-19"},
         duration_ms=42,

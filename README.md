@@ -151,6 +151,7 @@ because it describes the process rather than the API contract.
 | GET | `/api/v1/projects` | List projects (paginated) |
 | GET | `/api/v1/projects/{project_id}` | Get a project |
 | POST | `/api/v1/projects/{project_id}/runs` | Start a run (status `running`) |
+| POST | `/api/v1/projects/{project_id}/runs/ingest` | Upload one finished run and its whole trace |
 | GET | `/api/v1/projects/{project_id}/runs` | List a project's runs (paginated) |
 | GET | `/api/v1/runs/{run_id}` | Get a run |
 | POST | `/api/v1/runs/{run_id}/complete` | Record output and final status |
@@ -158,8 +159,9 @@ because it describes the process rather than the API contract.
 | GET | `/api/v1/runs/{run_id}/events` | List events ordered by `sequence` |
 
 Errors: `404` for a missing project or run, `409` for a duplicate event
-sequence, for a run that has already finished, or for an event posted to a
-finished run, `422` for a malformed body or a path id that is not a UUID.
+sequence, for a run that has already finished, for an event posted to a
+finished run, or for re-uploading a run id that is already stored, `422` for a
+malformed body or a path id that is not a UUID.
 
 Paginated endpoints take `?page=1&page_size=20` (`page_size` caps at 100) and
 return `{"items": [...], "total": n, "page": n, "page_size": n}`.
@@ -189,9 +191,9 @@ RUN=d8686012-6e56-483f-bbfc-c69c22d91f52
 curl -s -X POST $API/runs/$RUN/events -H 'content-type: application/json' \
   -d '{"sequence":1,"event_type":"agent_start"}'
 curl -s -X POST $API/runs/$RUN/events -H 'content-type: application/json' \
-  -d '{"sequence":2,"event_type":"tool_call","tool_name":"get_order","arguments":{"order_id":"12345"}}'
+  -d '{"sequence":2,"event_type":"tool_call","call_id":"call_abc123","tool_name":"get_order","arguments":{"order_id":"12345"}}'
 curl -s -X POST $API/runs/$RUN/events -H 'content-type: application/json' \
-  -d '{"sequence":3,"event_type":"tool_response","tool_name":"get_order","response":{"status":"in_transit","eta":"2026-09-19"},"duration_ms":42}'
+  -d '{"sequence":3,"event_type":"tool_response","call_id":"call_abc123","tool_name":"get_order","response":{"status":"in_transit","eta":"2026-09-19"},"duration_ms":42}'
 curl -s -X POST $API/runs/$RUN/events -H 'content-type: application/json' \
   -d '{"sequence":4,"event_type":"agent_end"}'
 
@@ -210,6 +212,44 @@ A run that has already finished answers `409` rather than overwriting its
 recorded output, and two events cannot claim the same `sequence` within a run.
 A finished run also rejects new events with `409`: once closed, a trace is a
 frozen recording.
+
+Paired `call_id` values are what let replay match a `tool_response` back to the
+`tool_call` it answered, which matters when an agent calls several tools at
+once.
+
+### Uploading a finished run in one request
+
+The walkthrough above records a run step by step. An SDK that buffers the whole
+execution can instead send it once, and the run and all its events are written
+in a single transaction:
+
+```bash
+curl -s -X POST $API/projects/$PROJECT/runs/ingest \
+  -H 'content-type: application/json' \
+  -d '{
+    "id": "3f1d9c88-5b7a-4f2e-9f6c-1b2a3c4d5e6f",
+    "agent_name": "support-agent",
+    "agent_version": "v1.2.0",
+    "input": {"message": "Where is my order?"},
+    "output": {"message": "Your order is arriving tomorrow."},
+    "status": "completed",
+    "started_at": "2026-09-19T10:00:00+00:00",
+    "completed_at": "2026-09-19T10:00:04+00:00",
+    "metadata": {"user_id": "u-1", "environment": "staging"},
+    "events": [
+      {"sequence": 1, "event_type": "agent_start"},
+      {"sequence": 2, "event_type": "tool_call", "call_id": "call_abc123",
+       "tool_name": "get_order", "arguments": {"order_id": "12345"}},
+      {"sequence": 3, "event_type": "tool_response", "call_id": "call_abc123",
+       "tool_name": "get_order", "response": {"status": "in_transit"},
+       "duration_ms": 42},
+      {"sequence": 4, "event_type": "agent_end"}
+    ]
+  }'
+```
+
+The `id` is supplied by the client, so retrying an upload that may already have
+landed answers `409` instead of storing the run twice.
 
 ---
 

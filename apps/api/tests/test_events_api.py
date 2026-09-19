@@ -128,6 +128,38 @@ async def test_the_same_sequence_is_fine_in_a_different_run(
     ).status_code == 201
 
 
+async def test_call_id_is_accepted_and_returned(api_client: AsyncClient) -> None:
+    """The incremental path carries call_id as well as the ingest path."""
+    run_id = await _run(api_client)
+
+    response = await api_client.post(
+        f"/api/v1/runs/{run_id}/events",
+        json={
+            "sequence": 1,
+            "event_type": "tool_call",
+            "call_id": "call_abc123",
+            "tool_name": "get_order",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["call_id"] == "call_abc123"
+
+    events = (await api_client.get(f"/api/v1/runs/{run_id}/events")).json()
+    assert [event["call_id"] for event in events] == ["call_abc123"]
+
+
+async def test_call_id_defaults_to_null(api_client: AsyncClient) -> None:
+    run_id = await _run(api_client)
+
+    response = await api_client.post(
+        f"/api/v1/runs/{run_id}/events",
+        json={"sequence": 1, "event_type": "agent_start"},
+    )
+
+    assert response.json()["call_id"] is None
+
+
 async def test_a_completed_run_rejects_new_events(api_client: AsyncClient) -> None:
     """A finished run is a frozen recording."""
     run_id = await _run(api_client)

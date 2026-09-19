@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import (
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     UniqueConstraint,
@@ -50,6 +51,10 @@ class Event(UUIDPrimaryKeyMixin, Base):
         # from ever claiming the same position, and the index it creates is
         # also the one that serves "fetch this run's events in order".
         UniqueConstraint("run_id", "sequence", name="uq_events_run_id_sequence"),
+        # Replay pairs a tool_call with the tool_response that answered it by
+        # looking both up under one call id. Not unique: a call and its
+        # response deliberately share the value.
+        Index("ix_events_run_id_call_id", "run_id", "call_id"),
     )
 
     run_id: Mapped[uuid.UUID] = mapped_column(
@@ -61,6 +66,12 @@ class Event(UUIDPrimaryKeyMixin, Base):
 
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    # A string rather than a UUID: the id is minted by whatever produced the
+    # call, and other SDKs and model providers use their own formats
+    # (OpenAI's "call_abc123", for instance). Storing it verbatim keeps the
+    # recording faithful to what actually happened.
+    call_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     tool_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     arguments: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)

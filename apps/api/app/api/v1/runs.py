@@ -13,7 +13,7 @@ from fastapi import APIRouter, status
 
 from app.api.dependencies import PaginationDep, RunServiceDep
 from app.schemas.common import Page
-from app.schemas.run import RunComplete, RunCreate, RunResponse
+from app.schemas.run import RunComplete, RunCreate, RunIngest, RunResponse
 
 router = APIRouter(tags=["runs"])
 
@@ -32,6 +32,31 @@ async def create_run(
 ) -> RunResponse:
     """Start a run. Its status is always `running` on creation."""
     run = await service.create(project_id, payload)
+    return RunResponse.model_validate(run)
+
+
+@router.post(
+    "/projects/{project_id}/runs/ingest",
+    response_model=RunResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload one finished run with its whole trace",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "No such project."},
+        status.HTTP_409_CONFLICT: {"description": "That run id is already stored."},
+    },
+)
+async def ingest_run(
+    project_id: uuid.UUID, payload: RunIngest, service: RunServiceDep
+) -> RunResponse:
+    """Store a finished run and all of its events in one transaction.
+
+    This is the SDK's upload path. It records an execution in memory and sends
+    it once, so the run and its trace are written together or not at all --
+    a partially stored trace would look to replay like a complete recording of
+    an agent that stopped early. The client supplies the run id, which makes a
+    retried upload a conflict rather than a duplicate.
+    """
+    run = await service.ingest(project_id, payload)
     return RunResponse.model_validate(run)
 
 

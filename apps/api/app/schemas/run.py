@@ -6,7 +6,13 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
+from app.schemas.event import EventCreate
+
+# An upper bound on one upload, so a runaway agent cannot post an unbounded
+# payload. Well above any realistic trace length.
+MAX_INGEST_EVENTS = 10_000
 
 
 class RunCreate(BaseModel):
@@ -31,10 +37,76 @@ class RunComplete(BaseModel):
     status: Literal["completed", "failed"] = "completed"
 
 
+class RunIngest(RunCreate):
+    """Request body for uploading one already-finished run.
+
+    Subclasses `RunCreate` so the agent fields carry exactly the same
+    constraints the incremental path enforces; drift between the two would let
+    a run in through one door that the other rejects.
+
+    An ingested run is finished by definition -- the SDK buffers the whole
+    execution and uploads it once the agent has stopped -- so the client also
+    supplies the timestamps it observed, rather than the API inventing them at
+    receipt time.
+    """
+
+    id: uuid.UUID = Field(
+        description=(
+            "Client-generated run id. Makes the upload safe to retry: a second "
+            "upload of the same run conflicts instead of duplicating it."
+        ),
+    )
+    output: dict[str, Any] | None = Field(
+        default=None,
+        examples=[{"message": "Your order is arriving tomorrow."}],
+    )
+    status: Literal["completed", "failed"] = "completed"
+    started_at: AwareDatetime = Field(
+        description="When the agent started, as observed by the client."
+    )
+    completed_at: AwareDatetime = Field(
+        description="When the agent stopped, as observed by the client."
+    )
+    metadata: dict[str, Any] | None = Field(
+        default=None,
+        description="Free-form run context: user id, environment, git SHA.",
+        examples=[{"user_id": "u-1", "environment": "staging"}],
+    )
+    events: list[EventCreate] = Field(
+        default_factory=list,
+        max_length=MAX_INGEST_EVENTS,
+        description="The whole trace, in one payload.",
+    )
+
+    @model_validator(mode="after")
+    def _check_timeline(self) -> RunIngest:
+        """A run cannot finish before it started."""
+        if self.completed_at < self.started_at:
+            raise ValueError("completed_at must not be earlier than started_at.")
+        return self
+
+    @model_validator(mode="after")
+    def _check_sequences_are_unique(self) -> RunIngest:
+        """Reject the collision here rather than letting the database find it.
+
+        The unique constraint would catch it, but only after a failed insert,
+        and the caller would learn less about which position was duplicated.
+        """
+        seen: set[int] = set()
+        for event in self.events:
+            if event.sequence in seen:
+                raise ValueError(
+                    f"Duplicate sequence {event.sequence} in events; "
+                    "each event must claim a distinct position."
+                )
+            seen.add(event.sequence)
+        return self
+
+
 class RunResponse(BaseModel):
     """A run as returned by the API."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     id: uuid.UUID
     project_id: uuid.UUID
@@ -42,6 +114,12 @@ class RunResponse(BaseModel):
     agent_version: str | None
     input: dict[str, Any]
     output: dict[str, Any] | None
+    # Read from the ORM's `run_metadata`, never from `metadata`: on a mapped
+    # class that attribute is SQLAlchemy's MetaData registry, so validating
+    # against the field name would serialise the schema instead of the data.
+    metadata: dict[str, Any] | None = Field(
+        default=None, validation_alias="run_metadata"
+    )
     status: str
     started_at: datetime
     completed_at: datetime | None

@@ -20,6 +20,15 @@ class EventCreate(BaseModel):
 
     sequence: int = Field(ge=0, examples=[1])
     event_type: str = Field(min_length=1, max_length=64, examples=["tool_call"])
+    call_id: str | None = Field(
+        default=None,
+        max_length=255,
+        description=(
+            "Ties a tool_call to the tool_response or error that answered it. "
+            "Set the same value on both so parallel calls can be paired."
+        ),
+        examples=["call_abc123"],
+    )
     tool_name: str | None = Field(default=None, max_length=255, examples=["get_order"])
     arguments: dict[str, Any] | None = Field(
         default=None, examples=[{"order_id": "12345"}]
@@ -37,6 +46,7 @@ class EventResponse(BaseModel):
     run_id: uuid.UUID
     sequence: int
     event_type: str
+    call_id: str | None
     tool_name: str | None
     arguments: dict[str, Any] | None
     response: Any | None

@@ -69,6 +69,15 @@ class Run(UUIDPrimaryKeyMixin, Base):
     input: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     output: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
+    # Free-form run context: a user id, the environment it ran in, later a git
+    # SHA. The column is "metadata", but the attribute cannot be -- SQLAlchemy
+    # declarative reserves `Base.metadata` for the MetaData object, and
+    # shadowing it would break mapping. Anything reading this off the ORM must
+    # use `run_metadata`; `run.metadata` is the schema registry, not the data.
+    run_metadata: Mapped[dict[str, Any] | None] = mapped_column(
+        "metadata", JSONB, nullable=True
+    )
+
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,

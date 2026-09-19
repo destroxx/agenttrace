@@ -43,6 +43,7 @@ class EventService:
             run_id=run_id,
             sequence=data.sequence,
             event_type=data.event_type,
+            call_id=data.call_id,
             tool_name=data.tool_name,
             arguments=data.arguments,
             response=data.response,

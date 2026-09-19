@@ -112,6 +112,21 @@ new events with a conflict, and both closing a run and appending to it take a
 row lock on the run, so the two cannot interleave and leave an event stamped
 after the run was closed.
 
+**Ingest is one transaction, keyed by the client.** An SDK buffers a whole
+execution and uploads it once, so `POST /projects/{id}/runs/ingest` writes the
+run and every event together or not at all — a half-stored trace would look to
+replay like a complete recording of an agent that stopped early. The run id
+comes from the client rather than the database, which is what makes a retried
+upload safe: the primary key turns the second attempt into a conflict instead
+of a duplicate run. Because the run is new, no row lock is needed.
+
+**`call_id` pairs a call with its answer.** A `tool_call` and the
+`tool_response` or `error` that answered it carry the same `call_id`, so an
+agent that calls several tools at once can still be reassembled — `sequence`
+alone only gives the order, not which response belongs to which call. It is a
+string, not a UUID, because the id is minted by whatever made the call and
+other SDKs and providers use their own formats.
+
 **Separate Pydantic schemas and ORM models.** The models describe how rows are
 stored; the schemas describe what the API accepts and returns. Serialising ORM
 objects directly would make every column rename a breaking API change, would
