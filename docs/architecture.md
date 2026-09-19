@@ -4,8 +4,8 @@
 
 Built so far: the monorepo, a FastAPI service, PostgreSQL via Docker Compose,
 the SQLAlchemy data model and its Alembic migration, the `/api/v1` REST
-surface for projects, runs and events, a minimal SDK, and a minimal Next.js
-app.
+surface for projects, runs and events, a Python SDK that records a run and
+uploads it, and a minimal Next.js app.
 
 Explicitly **not** built: replay, tool mocking, matching, semantic comparison,
 evaluation, regression suites, CI integration, authentication, billing,
@@ -177,5 +177,55 @@ turns the skip into a failure, which is what CI should set.
 ## SDK
 
 `packages/python-sdk` has **no runtime dependencies**. It is imported into the
-user's agent process, so it must not constrain their dependency tree. Traces
-are held in memory; uploading them to the API above is a later milestone.
+user's agent process, so it must not constrain their dependency tree. That
+rules out an HTTP client: the transport is `urllib.request`, and an async run
+sends from `asyncio.to_thread` so a blocking call never stalls the caller's
+event loop.
+
+**Upload happens once, when the run ends.** The SDK buffers the whole
+execution and posts it to `/projects/{id}/runs/ingest`, which is what lets the
+API write the run and its events in one transaction. The alternative —
+streaming each event as it happens — would cost a request per tool call and
+would leave partially recorded runs behind whenever an agent died mid-run,
+and replay cannot tell such a run from an agent that legitimately stopped
+early. The trade-off is explicit and documented for users: a hard process kill
+loses the run in flight. Recording is cheap, so the memory cost of holding a
+run is not the binding constraint; `completed_traces` is capped at 100 because
+a long-running server would otherwise accumulate every run it ever recorded.
+
+**Events are snapshotted at record time, not at upload time.** Upload happens
+when the run ends, so an event that merely held a reference to a tool's return
+value would record whatever the agent did to that value afterwards -- an agent
+that reads a dict and edits it in place would silently rewrite history. A
+recording is the fixture every future replay is compared against, so it has to
+be immutable the moment it is taken. Each event's `arguments` and `response`,
+and the run's `input`, `output` and `metadata`, therefore go through a JSON
+round trip (`json.dumps(..., default=str, allow_nan=False)` then `json.loads`)
+as they are recorded. The cost is one round trip per event, paid in the agent's
+own process; the same pass also settles up front whether a value can be
+serialised at all, and rejects `NaN`/`Infinity` here -- where the value can
+still degrade to its `repr` -- rather than at the API, which would refuse the
+whole upload. `ToolCall.response` deliberately keeps the live object, because
+that type predates the transport and callers already reach into it.
+
+**The active trace lives in a `ContextVar`, not on the tracer.** An instance
+attribute is shared by every coroutine on the event loop, so two agent runs
+started with `asyncio.gather` would record into whichever trace was assigned
+last, silently interleaving two executions into one recording. A context
+variable gives each task its own view, because a task inherits a copy of the
+context at creation. Sequence numbers are still assigned under a
+`threading.Lock`, since a synchronous tool may be recorded from a worker
+thread, and the number and the append have to happen together or the total
+order replay depends on would not hold.
+
+**Recording must never break the host application.** This is the constraint
+that shapes the rest: AgentTrace is observability, and observability that
+takes down the thing it observes is worse than none. Tool results and
+exceptions pass through unchanged — a decorated tool re-raises the original
+exception object after recording it — and every failure to record or upload is
+logged to the `agenttrace` logger and swallowed. Only `Exception` is caught,
+never `BaseException`, so `KeyboardInterrupt` and `asyncio.CancelledError`
+still propagate. Uploads are bounded by a configurable timeout, a 409 counts
+as success because the client-generated run id makes a retry idempotent, and
+payloads are serialised with `json.dumps(default=str)` so an unserialisable
+tool argument costs a readable repr rather than the whole trace.

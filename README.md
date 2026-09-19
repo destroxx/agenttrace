@@ -7,9 +7,10 @@ responses — so that a later version of the agent can be replayed against them
 without calling the real external tools.
 
 > **Milestone status.** The data model and REST API are in place: projects,
-> runs and events can be recorded and read back. **Replay, evaluation,
-> semantic comparison, authentication, billing, queues and deployment are not
-> implemented.** See [`docs/architecture.md`](docs/architecture.md).
+> runs and events can be recorded and read back, and the Python SDK records a
+> run and uploads it. **Replay, evaluation, semantic comparison,
+> authentication, billing, queues and deployment are not implemented.** See
+> [`docs/architecture.md`](docs/architecture.md).
 
 ## Layout
 
@@ -273,19 +274,60 @@ connection — which is how the API connects — exercises authentication.
 
 ## SDK usage
 
+The SDK records a whole run in memory and uploads it in one request to the
+ingest endpoint when the run ends.
+
 ```python
+import asyncio
 from agenttrace import AgentTracer
 
-tracer = AgentTracer()  # reads AGENTTRACE_API_URL / AGENTTRACE_API_KEY
+tracer = AgentTracer()  # reads the AGENTTRACE_* environment
 
-with tracer.trace("checkout-agent", user="u-1") as trace:
-    tracer.record_tool_call("search", {"q": "shoes"}, response=["a", "b"])
 
-print(len(trace.tool_calls))  # 1
+@tracer.tool
+async def get_order(order_id: str) -> dict:
+    return {"id": order_id, "status": "shipped"}
+
+
+async def main() -> None:
+    async with tracer.trace(
+        "support-agent",
+        input={"message": "Where is my order?"},
+        agent_version="v1.0.0",
+        user_id="u-1",          # anything else becomes run metadata
+    ) as trace:
+        order = await get_order("A-1")
+        trace.set_output({"message": f"Your order is {order['status']}."})
+
+    print(trace.id, trace.status, len(trace.events), trace.uploaded)
+
+
+asyncio.run(main())
 ```
 
-Traces are held in memory; uploading them to the API is a later milestone.
-A runnable version is in [`examples/record_tool_calls.py`](examples/record_tool_calls.py).
+`with tracer.trace(...)` works the same way for a synchronous agent, and
+`@tracer.tool` decorates sync and async functions alike. A call and the
+response that answered it share a `call_id`, so tools called in parallel can
+still be paired back up.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `AGENTTRACE_API_URL` | `http://localhost:8000` | Where the API lives |
+| `AGENTTRACE_PROJECT_ID` | _unset_ | The project runs are uploaded to |
+| `AGENTTRACE_TIMEOUT` | `5` | Seconds to wait for one upload |
+
+**Uploading is opt-in**: without `AGENTTRACE_PROJECT_ID` the SDK keeps traces
+in memory and never opens a socket. Recording is never allowed to break the
+host application — tool results and exceptions pass through unchanged, and a
+failed upload is logged to the `agenttrace` logger and swallowed.
+
+**Known trade-off:** nothing is sent until the run ends, so a hard process
+kill loses the run in flight.
+
+Runnable examples:
+[`examples/async_support_agent.py`](examples/async_support_agent.py) (async,
+parallel tools, upload) and
+[`examples/record_tool_calls.py`](examples/record_tool_calls.py) (minimal).
 
 ## Shutting down
 
@@ -301,6 +343,6 @@ docker compose down -v       # stop and delete the data volume
 | `.env` | `docker-compose.yml` | Postgres database, user, password, host port |
 | `apps/api/.env` | FastAPI, Alembic, tests | `DATABASE_URL` or `POSTGRES_*`, CORS allowlist |
 | `apps/web/.env.local` | Next.js | `NEXT_PUBLIC_API_URL` (public, never secret) |
-| `packages/python-sdk/.env` | SDK consumers | `AGENTTRACE_API_URL`, `AGENTTRACE_API_KEY` |
+| `packages/python-sdk/.env` | SDK consumers | `AGENTTRACE_API_URL`, `AGENTTRACE_API_KEY`, `AGENTTRACE_PROJECT_ID`, `AGENTTRACE_TIMEOUT` |
 
 Every file has a committed `.env.example`; real `.env` files are gitignored.
