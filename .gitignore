@@ -25,3 +25,7 @@ next-env.d.ts
 .DS_Store
 .idea/
 .vscode/
+
+# Local review scratch
+phase3a.diff
+phase3a-new-files.txt
