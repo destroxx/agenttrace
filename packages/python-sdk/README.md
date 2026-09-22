@@ -52,6 +52,95 @@ calls tools in parallel, see
 `tracer.record_tool_call(name, arguments, response)` is still there for tools
 you cannot decorate.
 
+## Replay
+
+Replay runs the agent's **own entry point** again — the same function that
+records in production — while every `@tracer.tool` call is answered from a
+recording instead of executing. Real tools never run during a replay.
+
+```python
+from agenttrace import AgentTracer, Recording
+
+tracer = AgentTracer()
+
+
+async def run_agent(request: dict) -> str:        # your normal entry point
+    async with tracer.trace("support-agent", input=request) as trace:
+        order = await get_order(request["order_id"])
+        trace.set_output({"reply": order["status"]})
+    return order["status"]
+
+
+recording = await Recording.from_api(run_id)       # or Recording.from_trace(trace)
+result = await tracer.replay(recording, run_agent, agent_version="v2.0.0")
+```
+
+- `agent_fn` is called with `recording.input` and must open its own
+  `tracer.trace(...)`; it may be async or sync (a sync one runs in
+  `asyncio.to_thread`). That trace carries `replay_of_run_id` and uploads as
+  usual when `AGENTTRACE_PROJECT_ID` is set.
+- `agent_version=` overrides the version on the replay's trace.
+- The agent's own exceptions are captured in `result.error`, not raised.
+
+Loading a recording:
+
+| | |
+| --- | --- |
+| `Recording.from_trace(trace)` | A trace recorded in this process — tests and demos |
+| `Recording.from_payload(dict)` | A `RunIngest`-shaped dict, e.g. `build_payload(trace)` |
+| `await Recording.from_api(run_id, config=None)` | Fetch from the API; `from_api_sync` is the blocking variant |
+
+### How calls are matched
+
+A live call is matched against the **unused** recorded calls of the same
+tool: first **exact** (canonical JSON of the arguments), then **normalized**
+(strings stripped, `2.0` → `2`, `None`-valued keys dropped; list order and
+case are kept). Among equal candidates the earliest recorded wins, and each
+recorded call answers once — so three identical polling calls get the three
+recorded answers in order, and parallel calls each get their own.
+
+| The match | What the tool call does |
+| --- | --- |
+| Recorded response | Returns a copy of it |
+| Recorded builtin error (`TimeoutError`, `KeyError`, …) | Raises the same type |
+| Recorded other error | Raises `ReplayedToolError(error_type, message)` |
+| Recorded call with no result | Raises `ReplayedToolError` |
+| Nothing matches | Raises `UnmatchedToolCall(tool_name, arguments)` |
+
+### The result
+
+`ReplayResult` reports facts, not a verdict: `status`, `output` (the replay
+trace's, comparable with `recording.output`), `return_value`, `error`,
+`matches` (per live call: tool, tier `exact`/`normalized`/`unmatched`, new and
+recorded `call_id` and arguments), `unused` (recorded calls never made),
+`summary` counts, and `trace`, the replay's own trace. An agent that opens no
+trace, or more than one, is reported in `error`.
+
+### Replay raises; recording does not
+
+Recording never raises into your code. Replay is test tooling you invoke on
+purpose, so it fails loudly:
+
+| Exception | When |
+| --- | --- |
+| `RecordingNotFound` | `from_api` got a 404 (subclass of `AgentTraceAPIError`) |
+| `AgentTraceAPIError` | Any other fetch failure; `.status` is the HTTP status or None |
+| `ReplayError` | `replay` called inside another replay; a payload with no run id |
+| `UnmatchedToolCall` | Raised inside the agent for a call nothing matches |
+| `ReplayedToolError` | Raised inside the agent for a recorded non-builtin error |
+
+### Replay limitations
+
+- **Only `@tracer.tool` functions are replayable.** A call recorded with
+  `record_tool_call` has already run by the time the SDK sees it; during replay
+  it is recorded as usual but not answered, and its recorded counterpart is
+  reported unused.
+- **The agent's own LLM calls run live** unless they are wrapped as tools.
+- **The agent gets the recorded input.** A non-dict input was stored as
+  `{"value": ...}` and is passed that way.
+- **Recorded errors keep only a type name and message** — no traceback,
+  attributes or chain.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -134,5 +223,5 @@ logging.getLogger("agenttrace").setLevel(logging.DEBUG)
 
 ## Scope
 
-Recording and upload are implemented. Replay, comparison and evaluation are
-later milestones.
+Recording, upload and replay are implemented. Comparison (pass/fail) and
+evaluation are later milestones.

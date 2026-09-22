@@ -411,3 +411,83 @@ async def test_re_ingesting_the_same_id_does_not_overwrite_the_stored_run(
     ]
     assert [e["tool_name"] for e in events] == [None, "get_order", "get_order", None]
     assert "call_zzz999" not in {e["call_id"] for e in events}
+
+
+# --- replay_of_run_id ------------------------------------------------------
+#
+# A replay run names the recording it replayed. The reference is only
+# meaningful inside one project, so anything else is refused at the door.
+
+
+async def _ingest(api_client: AsyncClient, project_id: str, payload: dict[str, Any]):
+    return await api_client.post(f"/api/v1/projects/{project_id}/runs/ingest", json=payload)
+
+
+async def test_a_replay_may_name_its_recording(api_client: AsyncClient) -> None:
+    project_id = await _project(api_client)
+    recording = _payload()
+    assert (await _ingest(api_client, project_id, recording)).status_code == 201
+
+    replay = _payload(replay_of_run_id=recording["id"])
+    response = await _ingest(api_client, project_id, replay)
+
+    assert response.status_code == 201, response.text
+    assert response.json()["replay_of_run_id"] == recording["id"]
+
+
+async def test_replay_of_run_id_round_trips(api_client: AsyncClient) -> None:
+    project_id = await _project(api_client)
+    recording = _payload()
+    await _ingest(api_client, project_id, recording)
+    replay = _payload(replay_of_run_id=recording["id"])
+    await _ingest(api_client, project_id, replay)
+
+    fetched = (await api_client.get(f"/api/v1/runs/{replay['id']}")).json()
+    assert fetched["replay_of_run_id"] == recording["id"]
+    # a plain recording reports null rather than omitting the field
+    original = (await api_client.get(f"/api/v1/runs/{recording['id']}")).json()
+    assert original["replay_of_run_id"] is None
+    listed = (await api_client.get(f"/api/v1/projects/{project_id}/runs")).json()
+    by_id = {run["id"]: run["replay_of_run_id"] for run in listed["items"]}
+    assert by_id == {recording["id"]: None, replay["id"]: recording["id"]}
+
+
+async def test_replay_of_an_unknown_run_is_rejected(api_client: AsyncClient) -> None:
+    project_id = await _project(api_client)
+    missing = str(uuid.uuid4())
+    replay = _payload(replay_of_run_id=missing)
+
+    response = await _ingest(api_client, project_id, replay)
+
+    assert response.status_code == 422
+    [error] = response.json()["detail"]
+    assert error["loc"] == ["body", "replay_of_run_id"]
+    assert missing in error["msg"]
+    # nothing was stored
+    assert (await api_client.get(f"/api/v1/runs/{replay['id']}")).status_code == 404
+
+
+async def test_replay_of_a_run_in_another_project_is_rejected(
+    api_client: AsyncClient,
+) -> None:
+    home = await _project(api_client, "Home")
+    elsewhere = await _project(api_client, "Elsewhere")
+    foreign = _payload()
+    assert (await _ingest(api_client, elsewhere, foreign)).status_code == 201
+
+    replay = _payload(replay_of_run_id=foreign["id"])
+    response = await _ingest(api_client, home, replay)
+
+    assert response.status_code == 422
+    [error] = response.json()["detail"]
+    assert error["loc"] == ["body", "replay_of_run_id"]
+    assert home in error["msg"]
+    assert (await api_client.get(f"/api/v1/runs/{replay['id']}")).status_code == 404
+
+
+async def test_replay_of_run_id_must_be_a_uuid(api_client: AsyncClient) -> None:
+    project_id = await _project(api_client)
+
+    response = await _ingest(api_client, project_id, _payload(replay_of_run_id="nope"))
+
+    assert response.status_code == 422

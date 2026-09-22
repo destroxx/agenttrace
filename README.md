@@ -29,11 +29,12 @@ be replayed against that recording instead of against production.
                                   calling the
                                   real tools
 
-  ✅ implemented   ✅ implemented  ⬜ planned       ⬜ planned
+  ✅ implemented   ✅ implemented  ✅ implemented   ⬜ planned
 ```
 
-**Record** and **Save** work today. **Replay** and **Compare** are not built —
-there is no replay engine, no tool mocking and no comparison logic yet.
+**Record**, **Save** and **Replay** work today. **Compare** is not built —
+a replay reports which tool calls matched, which did not and which recorded
+calls went unused, but nothing yet turns that into a pass or a fail.
 
 ## Status
 
@@ -44,9 +45,9 @@ there is no replay engine, no tool mocking and no comparison logic yet.
 | ✅ | Frozen terminal runs | A finished run rejects new events; row lock serialises close vs. append |
 | ✅ | One-request ingest | A whole finished run and its trace in a single transaction |
 | ✅ | Python SDK recorder | Async/sync tracing, `@tracer.tool`, end-of-run upload, record-time snapshots |
-| ⬜ | Replay | Re-run an agent with recorded tool results served back to it |
+| ✅ | Replay | Re-run an agent's own entry point with recorded tool results served back; exact → normalized matching |
 | ⬜ | Compare & regression suites | Diff a replay against its recording; run suites in CI |
-| ⬜ | Dashboard | `apps/web` is a single page showing API health |
+| ⬜ | Dashboard | Postponed; `apps/web` is a single page showing API health |
 | ⬜ | Auth, billing, queues, deployment | Not started; the SDK sends an API key the API does not check |
 
 ## Key design decisions
@@ -69,6 +70,10 @@ Each links to the reasoning in [`docs/architecture.md`](docs/architecture.md).
 - **The SDK has no runtime dependencies.** It is imported into someone else's
   agent process, so it must not constrain their dependency tree — the transport
   is `urllib`. [Details](docs/architecture.md#sdk)
+- **Replay runs the unchanged agent, in the SDK.** Decorated tools answer from
+  the recording and never execute; calls are matched exactly, then after a
+  conservative normalisation, each recorded answer used once.
+  [Details](docs/architecture.md#replay-and-tool-call-matching)
 - **Terminal runs are frozen.** A `completed`/`failed` run rejects new events,
   and closing and appending take a row lock so they cannot interleave.
   [Details](docs/architecture.md#design-decisions)
@@ -223,6 +228,39 @@ asyncio.run(main())
 `tracer.record_tool_call(name, arguments, response)` is there for tools you
 cannot decorate.
 
+### Replay
+
+Replay runs your agent's normal entry point again, with every `@tracer.tool`
+answered from a recording instead of executing. The agent code does not
+change:
+
+```python
+from agenttrace import Recording
+
+recording = await Recording.from_api(run_id)          # or Recording.from_trace(trace)
+result = await tracer.replay(recording, run_agent, agent_version="v2.0.0")
+
+result.status, result.output, result.error            # how the new agent's run went
+result.summary                                        # exact / normalized / unmatched / unused
+for match in result.matches:                          # one per tool call the new agent made
+    print(match.tool_name, match.tier, match.recorded_arguments, match.new_arguments)
+for skipped in result.unused:                         # recorded calls it never made
+    print(skipped.tool_name, skipped.arguments)
+```
+
+`run_agent(input)` is called with the recorded input and must open its own
+`tracer.trace(...)`. That trace uploads like any run, with `replay_of_run_id`
+pointing at the recording. A call no recording matches raises
+`UnmatchedToolCall` inside the agent rather than reaching the real tool.
+
+```bash
+.venv/bin/python examples/replay_demo.py
+```
+
+records the example agent once and replays three versions of it — unchanged, one
+that skips a step, and one that looks orders up with the wrong id — printing a
+side-by-side table of each, and proving no real tool ran.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `AGENTTRACE_API_URL` | `http://localhost:8000` | Where the API lives |
@@ -257,8 +295,9 @@ because it describes the process rather than the API contract.
 
 Errors: `404` for a missing project or run; `409` for a duplicate event
 sequence, a run that has already finished, an event posted to a finished run, or
-re-uploading a run id that is already stored; `422` for a malformed body or a
-path id that is not a UUID.
+re-uploading a run id that is already stored; `422` for a malformed body, a
+path id that is not a UUID, or an ingest `replay_of_run_id` that is not a run in
+the same project.
 
 Paginated endpoints take `?page=1&page_size=20` (`page_size` caps at 100) and
 return `{"items": [...], "total": n, "page": n, "page_size": n}`.
@@ -310,7 +349,7 @@ agenttrace/
 
 Inside `apps/api`, dependencies point inward and nothing depends on transport:
 routes (`app/api/`) carry no business logic, services (`app/services/`) never
-import FastAPI and raise only `NotFoundError`/`ConflictError`, and
+import FastAPI and raise only `NotFoundError`/`ConflictError`/`UnprocessableError`, and
 `app/config.py` is the only module that reads the environment.
 
 ## Running the tests
@@ -334,7 +373,7 @@ ruff check apps/api packages/python-sdk examples
 cd apps/web && npm run lint && npm run build && npx tsc --noEmit
 ```
 
-Currently 77 API tests and 40 SDK tests. The API suite owns a separate database
+Currently 82 API tests and 85 SDK tests. The API suite owns a separate database
 and rolls back every test, so running it never touches development data.
 
 Migrations are reversible; the round trip is worth checking after a schema
@@ -368,8 +407,8 @@ which cancels it. Use `pytest -o addopts="" -v`.
 ## Known limitations
 
 The deliberate trade-offs — end-of-run upload losing a run to a hard kill, the
-per-socket upload timeout, unrecorded tools in raw threads, and more — are
-listed in
+per-socket upload timeout, unrecorded tools in raw threads, only `@tracer.tool`
+being replayable, and more — are listed in
 [`docs/architecture.md`](docs/architecture.md#known-limitations-and-deliberate-trade-offs).
 
 ## Shutting down

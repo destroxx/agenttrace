@@ -79,6 +79,7 @@ def build_payload(trace: Trace) -> dict[str, Any]:
         "completed_at": _isoformat(trace.ended_at or trace.started_at),
         "metadata": dict(trace.metadata) if trace.metadata else None,
         "events": [_event_payload(event) for event in trace.events],
+        "replay_of_run_id": trace.replay_of_run_id,
     }
 
 

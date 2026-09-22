@@ -77,6 +77,13 @@ class RunIngest(RunCreate):
         max_length=MAX_INGEST_EVENTS,
         description="The whole trace, in one payload.",
     )
+    replay_of_run_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Set when this run was produced by replaying a recording: the id of "
+            "that recording. It must be a run in the same project."
+        ),
+    )
 
     @model_validator(mode="after")
     def _check_timeline(self) -> RunIngest:
@@ -124,3 +131,4 @@ class RunResponse(BaseModel):
     started_at: datetime
     completed_at: datetime | None
     created_at: datetime
+    replay_of_run_id: uuid.UUID | None = None

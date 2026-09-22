@@ -31,8 +31,9 @@ Dependencies point inward. Nothing depends on transport.
 | Data | `app/models/`, `app/db/` | ORM, engine, session lifecycle |
 | Config | `app/config.py` | The only module that reads the environment |
 
-Services raise only `NotFoundError` / `ConflictError` from
-`app/services/exceptions.py`; handlers in `app/main.py` map those to 404/409.
+Services raise only `NotFoundError` / `ConflictError` / `UnprocessableError`
+from `app/services/exceptions.py`; handlers in `app/main.py` map those to
+404/409/422.
 `HTTPException` appears nowhere under `app/`. Routes declare their
 `responses={404: ..., 409: ...}`. Eager-load relationships (`selectinload`) —
 a lazy load in async context raises. `runs.metadata` is mapped as
@@ -44,7 +45,11 @@ schema registry.
 - **Standard library only at runtime.** It is imported into someone else's
   agent process and must not constrain their dependency tree. `urllib` for
   HTTP; `asyncio.to_thread` to keep blocking calls off the event loop.
-- **Never raise into user code.** Tool results and exceptions pass through
+- **Recording never raises; replay does.** Recording runs in production and
+  follows the rule below. Replay (`tracer.replay`, `Recording.from_*`) is test
+  tooling invoked on purpose, so misuse and fetch failures raise the documented
+  exceptions in `agenttrace/errors.py`.
+- **Never raise into user code** while recording. Tool results and exceptions pass through
   unchanged. Recording and upload failures are logged to
   `logging.getLogger("agenttrace")` and swallowed. Catch `Exception`, never
   `BaseException`, except where a handler re-raises immediately — the one

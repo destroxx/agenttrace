@@ -13,9 +13,12 @@ from contextvars import ContextVar, Token
 from types import TracebackType
 from typing import Any
 
+from agenttrace import replay as _replay
 from agenttrace import transport
 from agenttrace.config import TracerConfig
-from agenttrace.models import RecordedEvent, ToolCall, Trace
+from agenttrace.errors import ReplayedToolError, ReplayError
+from agenttrace.models import RecordedEvent, ToolCall, Trace, snapshot_object
+from agenttrace.recording import Recording
 
 logger = logging.getLogger("agenttrace")
 
@@ -36,7 +39,14 @@ STATUS_FAILED = "failed"
 
 
 def _error_payload(exc: BaseException) -> dict[str, str]:
-    """Describe a failure in JSON, without dragging the exception along."""
+    """Describe a failure in JSON, without dragging the exception along.
+
+    A replayed error that could not be rebuilt as its own class is described
+    under the name it was recorded with, so a replay's trace says the same
+    thing its recording did rather than naming the SDK's stand-in.
+    """
+    if isinstance(exc, ReplayedToolError):
+        return {"type": exc.error_type, "message": exc.message}
     return {"type": type(exc).__name__, "message": str(exc)}
 
 
@@ -82,6 +92,11 @@ class _TraceContext:
 
     def _begin(self) -> Trace:
         self._token = self._tracer._activate(self._trace)
+        session = _replay.current_session()
+        if session is not None:
+            # Adopted only once activation succeeded: a trace refused as
+            # nested never ran, so it must not count as the replay's run.
+            session.adopt(self._trace)
         self._tracer._record(self._trace, EVENT_AGENT_START)
         return self._trace
 
@@ -255,6 +270,9 @@ class AgentTracer:
         Works on sync and async functions alike. Outside a trace the wrapper
         does nothing but call through, so the same code runs instrumented or
         not, and a recording failure never costs the tool's real result.
+
+        Inside `replay(...)` the real function is never called, trace or no
+        trace: the call is answered from the recording instead.
         """
 
         def decorate(target: Callable[..., Any]) -> Callable[..., Any]:
@@ -265,9 +283,13 @@ class AgentTracer:
                 @functools.wraps(target)
                 async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                     trace = self._active.get()
+                    session = _replay.current_session()
+                    if session is not None:
+                        return self._replay_tool(session, trace, tool_name, target, args, kwargs)
                     if trace is None:
                         return await target(*args, **kwargs)
-                    call = self._begin_tool(trace, tool_name, target, args, kwargs)
+                    arguments = _bind_arguments(target, args, kwargs)
+                    call = self._begin_tool(trace, tool_name, arguments)
                     started = time.perf_counter()
                     try:
                         result = await target(*args, **kwargs)
@@ -288,9 +310,13 @@ class AgentTracer:
             @functools.wraps(target)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 trace = self._active.get()
+                session = _replay.current_session()
+                if session is not None:
+                    return self._replay_tool(session, trace, tool_name, target, args, kwargs)
                 if trace is None:
                     return target(*args, **kwargs)
-                call = self._begin_tool(trace, tool_name, target, args, kwargs)
+                arguments = _bind_arguments(target, args, kwargs)
+                call = self._begin_tool(trace, tool_name, arguments)
                 started = time.perf_counter()
                 try:
                     result = target(*args, **kwargs)
@@ -353,16 +379,11 @@ class AgentTracer:
             return None
 
     def _begin_tool(
-        self,
-        trace: Trace,
-        tool_name: str,
-        target: Callable[..., Any],
-        args: tuple[Any, ...],
-        kwargs: dict[str, Any],
+        self, trace: Trace, tool_name: str, arguments: dict[str, Any]
     ) -> ToolCall | None:
         """Open a decorated tool call. Returns None if recording failed."""
         try:
-            call = ToolCall(name=tool_name, arguments=_bind_arguments(target, args, kwargs))
+            call = ToolCall(name=tool_name, arguments=arguments)
             trace.add_tool_call(call)
         except Exception:
             logger.warning(
@@ -421,6 +442,82 @@ class AgentTracer:
                 response=_error_payload(error),
                 duration_ms=duration_ms,
             )
+
+    def _replay_tool(
+        self,
+        session: _replay.ReplaySession,
+        trace: Trace | None,
+        tool_name: str,
+        target: Callable[..., Any],
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> Any:
+        """Answer a decorated tool call from the recording. `target` never runs.
+
+        The call is recorded into the replay's own trace exactly as a live one
+        would be -- a `tool_call`, then a `tool_response` or `error` sharing its
+        `call_id` -- so the replay is itself an ordinary, comparable trace.
+        Unlike recording, this raises into the agent on purpose: a recorded
+        failure is re-raised, and a call the recording cannot answer raises
+        `UnmatchedToolCall` rather than falling through to the real tool.
+        """
+        arguments = _bind_arguments(target, args, kwargs)
+        live_arguments = snapshot_object(arguments) or {}
+        call = self._begin_tool(trace, tool_name, arguments) if trace is not None else None
+        started = time.perf_counter()
+        recorded = session.resolve(tool_name, live_arguments, call.id if call else None)
+        try:
+            result = _replay.recorded_outcome(tool_name, live_arguments, recorded)
+        except Exception as exc:
+            if trace is not None:
+                self._end_tool(trace, call, tool_name, started, error=exc)
+            raise
+        if trace is not None:
+            self._end_tool(trace, call, tool_name, started, response=result)
+        return result
+
+    async def replay(
+        self,
+        recording: Recording,
+        agent_fn: Callable[[dict[str, Any]], Any],
+        *,
+        agent_version: str | None = None,
+    ) -> _replay.ReplayResult:
+        """Run `agent_fn` again with every decorated tool answered from `recording`.
+
+        `agent_fn` is the agent's ordinary entry point -- the same one that
+        records in production -- and is called with `recording.input`. It must
+        open its own `tracer.trace(...)`; that trace is marked as a replay of
+        the recording and uploads as usual. `agent_version`, if given,
+        overrides the version on that trace.
+
+        A synchronous `agent_fn` runs in `asyncio.to_thread`, which carries the
+        replay session into the worker. An exception from the agent is
+        captured into the result rather than raised, because a replay that
+        fails is still a result worth inspecting; `BaseException` propagates.
+        Raises `ReplayError` when called inside another replay.
+        """
+        if _replay.current_session() is not None:
+            raise ReplayError("replay sessions cannot be nested")
+        session = _replay.ReplaySession(recording=recording, agent_version=agent_version)
+        token = _replay.activate(session)
+        return_value: Any = None
+        error: dict[str, str] | None = None
+        try:
+            if inspect.iscoroutinefunction(agent_fn):
+                return_value = await agent_fn(recording.input)
+            else:
+                return_value = await asyncio.to_thread(agent_fn, recording.input)
+            # A sync wrapper around an async entry point hands back a coroutine.
+            if inspect.isawaitable(return_value):
+                return_value = await return_value
+        except Exception as exc:  # noqa: BLE001 - the agent's failure is the result
+            # The exception's own class, even for a ReplayedToolError: the
+            # result reports what reached the caller, the trace what was recorded.
+            error = {"type": type(exc).__name__, "message": str(exc)}
+        finally:
+            _replay.deactivate(token)
+        return session.result(return_value, error)
 
     def _upload(self, trace: Trace) -> None:
         """Send a finished trace, if there is anywhere to send it."""

@@ -43,6 +43,11 @@ async def create_run(
     responses={
         status.HTTP_404_NOT_FOUND: {"description": "No such project."},
         status.HTTP_409_CONFLICT: {"description": "That run id is already stored."},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": (
+                "Invalid body, or replay_of_run_id does not name a run in this project."
+            )
+        },
     },
 )
 async def ingest_run(

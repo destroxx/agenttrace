@@ -13,7 +13,7 @@ from app.models.event import Event
 from app.models.project import Project
 from app.models.run import Run, RunStatus
 from app.schemas.run import RunComplete, RunCreate, RunIngest
-from app.services.exceptions import ConflictError, NotFoundError
+from app.services.exceptions import ConflictError, NotFoundError, UnprocessableError
 from app.services.pagination import Pagination
 
 
@@ -32,6 +32,13 @@ def _violated_constraint(exc: IntegrityError) -> str | None:
             return str(name)
         error = error.__cause__
     return None
+
+
+def _foreign_recording(run_id: uuid.UUID, project_id: uuid.UUID) -> UnprocessableError:
+    return UnprocessableError(
+        "replay_of_run_id",
+        f"replay_of_run_id {run_id} is not a run in project {project_id}.",
+    )
 
 
 class RunService:
@@ -99,9 +106,19 @@ class RunService:
         No row lock is taken: the run does not exist yet, so there is nothing
         to serialize against. The primary key is what makes a retried upload
         safe.
+
+        A replay names the recording it replayed. That recording must live in
+        the same project: a replay compared against another project's run
+        would be a cross-tenant read the moment authentication exists. An
+        unknown id and a foreign one get the same answer, so the error does
+        not reveal which run ids exist elsewhere.
         """
         if await self._session.get(Project, project_id) is None:
             raise NotFoundError("Project", project_id)
+        if data.replay_of_run_id is not None:
+            recording = await self._session.get(Run, data.replay_of_run_id)
+            if recording is None or recording.project_id != project_id:
+                raise _foreign_recording(data.replay_of_run_id, project_id)
 
         run = Run(
             id=data.id,
@@ -114,6 +131,7 @@ class RunService:
             started_at=data.started_at,
             completed_at=data.completed_at,
             run_metadata=data.metadata,
+            replay_of_run_id=data.replay_of_run_id,
             events=[
                 Event(
                     sequence=event.sequence,
@@ -134,8 +152,13 @@ class RunService:
             await self._session.commit()
         except IntegrityError as exc:
             await self._session.rollback()
-            if _violated_constraint(exc) == "pk_runs":
+            violated = _violated_constraint(exc)
+            if violated == "pk_runs":
                 raise ConflictError(f"Run {data.id} already exists.") from exc
+            if violated == "fk_runs_replay_of_run_id_runs":
+                # The recording was deleted between the check above and the
+                # insert; answer as if the check had seen it gone.
+                raise _foreign_recording(data.replay_of_run_id, project_id) from exc
             # Anything else is not a retried upload; let it surface rather
             # than reporting a misleading conflict.
             raise

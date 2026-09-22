@@ -5,11 +5,12 @@
 Built so far: the monorepo, a FastAPI service, PostgreSQL via Docker Compose,
 the SQLAlchemy data model and its Alembic migration, the `/api/v1` REST
 surface for projects, runs and events, a Python SDK that records a run and
-uploads it, and a minimal Next.js app.
+uploads it, replay of a recorded run against a new version of the agent with
+deterministic tool-call matching, and a minimal Next.js app.
 
-Explicitly **not** built: replay, tool mocking, matching, semantic comparison,
-evaluation, regression suites, CI integration, authentication, billing,
-queues, AWS and Kubernetes.
+Explicitly **not** built: comparison of a replay against its recording
+(pass/fail), the LLM matching fallback, evaluation, regression suites, CI
+integration, a dashboard, authentication, billing, queues, AWS and Kubernetes.
 
 ## Repository layout
 
@@ -39,10 +40,17 @@ service layer never imports FastAPI.
 | Config | `app/config.py` | The only module that reads the environment. |
 
 A route resolves a service, calls one method, and converts the result into a
-response schema. Services raise `NotFoundError` or `ConflictError`; the two
-handlers registered in `app/main.py` turn those into `404` and `409`. No
-handler translates errors itself, and no service knows what an HTTP status
-code is.
+response schema. Services raise `NotFoundError`, `ConflictError` or
+`UnprocessableError`; the handlers registered in `app/main.py` turn those into
+`404`, `409` and `422`. No handler translates errors itself, and no service
+knows what an HTTP status code is.
+
+`UnprocessableError` exists for body rules that need the database — today,
+that `replay_of_run_id` names a run in the same project. Pydantic cannot check
+that, but to the caller it is the same kind of mistake as any other invalid
+field, so it answers `422` in FastAPI's own validation-error shape
+(`{"detail": [{"loc": ["body", field], "msg": ..., "type": "value_error"}]}`)
+rather than a `404` that would read as "your URL is wrong".
 
 ## Data model
 
@@ -53,7 +61,7 @@ Project ──< Run ──< Event
 | Table | Key columns | Notes |
 | --- | --- | --- |
 | `projects` | `id`, `name`, `description` | Owns runs |
-| `runs` | `id`, `project_id`, `agent_name`, `agent_version`, `input`, `output`, `status`, `started_at`, `completed_at` | Owns events |
+| `runs` | `id`, `project_id`, `agent_name`, `agent_version`, `input`, `output`, `metadata`, `status`, `started_at`, `completed_at`, `replay_of_run_id` | Owns events; a replay points at its recording |
 | `events` | `id`, `run_id`, `sequence`, `event_type`, `tool_name`, `arguments`, `response`, `duration_ms` | One step of a run |
 
 Relationships navigate both ways: `project.runs`, `run.project`, `run.events`,
@@ -69,6 +77,8 @@ silently blocking.
 | `ix_runs_project_id` | Fetch a project's runs |
 | `ix_runs_created_at` | Order runs globally by recency |
 | `ix_runs_project_id_created_at` | The list endpoint's actual access path: filter by project, order by recency |
+| `ix_runs_replay_of_run_id` | Find every replay of a recording |
+| `fk_runs_replay_of_run_id_runs` | A replay's recording must exist; `ON DELETE SET NULL` |
 | `ix_events_run_id` | Fetch a run's events |
 | `uq_events_run_id_sequence` | **Unique.** Two events cannot claim the same position in a run; the index also serves ordered reads |
 | `ck_runs_status_valid` | `status` must be `running`, `completed` or `failed` |
@@ -86,6 +96,13 @@ ORM relationships use `cascade="all, delete-orphan"` with
 does not load every child row in order to delete it. Deleting a project
 removes its runs and their events; deleting a run removes its events and
 leaves the project.
+
+`runs.replay_of_run_id` is the exception: `ON DELETE SET NULL`. A replay is a
+run in its own right, so deleting the recording it was replayed against should
+not silently delete it, and should not be blocked by it either. The replay
+keeps its trace and loses only the link. Same-project is enforced in
+`RunService.ingest`, not by the schema — a composite foreign key would need a
+redundant unique `(id, project_id)` on `runs` for one check.
 
 ## Design decisions
 
@@ -230,6 +247,85 @@ as success because the client-generated run id makes a retry idempotent, and
 payloads are serialised with `json.dumps(default=str)` so an unserialisable
 tool argument costs a readable repr rather than the whole trace.
 
+## Replay and tool-call matching
+
+Replay runs the customer's own agent entry point a second time — the same
+function that records in production — with every `@tracer.tool` call answered
+from a recording instead of executing. `tracer.replay(recording, agent_fn)`
+calls `agent_fn(recording.input)`; the agent opens its own `tracer.trace(...)`
+as it always does, and that trace is marked `replay_of_run_id = recording` and
+uploaded like any other run.
+
+**Why replay runs in the SDK, not the API.** The thing being tested is the
+agent's code, and that code only runs in the customer's process. The API could
+serve recorded answers over HTTP, but the tools are Python functions the agent
+calls directly; intercepting them where they are called is the only place that
+needs no change to the agent. It also keeps a replay usable offline:
+`Recording.from_trace` replays a run recorded moments earlier in the same
+process, with no API at all.
+
+**Real tools never run.** Inside a replay the decorator answers from the
+recording whether or not a trace is open, and never falls through to the real
+function — not even for a call it cannot match. The session lives in a
+module-level `ContextVar`, not one per tracer: an agent's tools are often
+decorated by a different `AgentTracer` instance than the one `replay` was
+called on, and a per-tracer session would leave those tools live.
+
+**The matching ladder.** Implemented as pure functions in
+`agenttrace/matching.py`, so comparison (Phase 6) will use exactly the same
+definition of "the same call".
+
+1. *Exact* — same tool name, and the arguments serialise to identical
+   canonical JSON (`sort_keys=True`, no whitespace). Both sides go through the
+   same `snapshot` recording uses, so a tuple and a list, or a datetime and its
+   string, compare as they were recorded.
+2. *Normalized* — same tool name, and the arguments are equal after a
+   conservative recursive normalisation: strings stripped of surrounding
+   whitespace, integer-valued floats turned into ints, and dict keys whose
+   value is `None` dropped. List order is kept, and case is **not** folded —
+   `"A-1"` and `"a-1"` may be different orders, and merging them would hand one
+   customer's data to another's lookup.
+3. *LLM-judged* — planned, not built. It would be slow and non-deterministic,
+   and a matcher that guesses would let a real regression pass as a match; it
+   belongs behind the deterministic tiers, never in front of them.
+
+Tier 1 is tried across every unconsumed candidate before tier 2 is tried at
+all, so a loose match never takes the recorded call an exact one was waiting
+for.
+
+**Consume-once, lowest sequence first.** Each recorded call answers at most
+one live call, and among equal candidates the earliest recorded one wins. That
+is what makes repeated identical calls work — an agent polling a job three
+times gets the three recorded answers in order, not the first one three times.
+Parallel calls (`asyncio.gather`) are safe for the same reason plus a lock:
+matching and consuming happen together under one `threading.Lock`, since sync
+tools may run in worker threads. Recorded answers are paired with their calls
+by `call_id`, not by position, so answers that arrived out of order in the
+recording still go to the right call.
+
+**Mismatches.** A live call no recorded call matches raises `UnmatchedToolCall`
+inside the agent: there is no recorded answer to give, and calling production
+is exactly what replay exists to avoid. The agent may catch it; either way it
+is reported as `unmatched`. A recorded call nothing claimed is reported as
+`unused` — the new agent skipped a step. A recorded error is re-raised: as
+itself when its type is a builtin `Exception` subclass (`TimeoutError`,
+`KeyError`), otherwise as `ReplayedToolError` carrying the recorded type name.
+Arbitrary names are never imported from a recording. The replay trace records
+every call exactly as a live run would, so it is itself a normal, comparable
+trace. `ReplayResult` reports facts — matches, unused calls, counts, the
+agent's error — and no verdict; deciding pass or fail is comparison's job.
+
+**Recording never raises; replay does.** Recording runs in production inside
+someone else's process, where a failure to record must never become a failure
+of the agent. Replay is test tooling a developer invokes on purpose, where a
+silent failure is the dangerous outcome: a fixture that failed to load and
+replayed as empty would look like a regression, or worse, like a pass. So
+`Recording.from_api` raises `RecordingNotFound` / `AgentTraceAPIError`, nested
+replays raise `ReplayError`, and unmatched calls raise into the agent. The
+agent's own exceptions are captured into the result rather than raised, since
+a replay that fails is still a result worth inspecting; `BaseException`
+propagates.
+
 ## Known limitations and deliberate trade-offs
 
 Every item here is a choice made with its cost understood, not an oversight.
@@ -279,3 +375,22 @@ context into the worker. A tool invoked through `loop.run_in_executor` or a raw
 `threading.Thread` sees no active trace: it runs and returns normally, but
 nothing about it reaches the recording. Use `asyncio.to_thread` for synchronous
 tools.
+
+**Only `@tracer.tool` functions are replayable.** A call recorded with
+`tracer.record_tool_call` was made by the agent's own code before the SDK saw
+it, so during replay the tool has already run; the call is recorded into the
+replay trace as usual but cannot be answered from the recording, and its
+recorded counterpart shows up as unused. Likewise the agent's own LLM calls run
+live during replay unless they are wrapped as tools — replay controls what the
+tools say, not what the model does with it.
+
+**Replay feeds the recorded input, as recorded.** `agent_fn` receives
+`recording.input`, which is the snapshot of what was passed to
+`tracer.trace(input=...)`. An agent that did not record everything it needed
+cannot be replayed faithfully, and a non-dict input arrives wrapped as
+`{"value": ...}`, because that is how it was stored.
+
+**Replayed errors are rebuilt from a name and a message.** Only builtin
+exception types are rebuilt as themselves; the recording holds no traceback,
+no attributes and no exception chain, so an agent that inspects those sees
+less during replay than it did live.

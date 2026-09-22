@@ -34,6 +34,10 @@ class FakeAPI:
     delay: float = 0.0
     url: str = ""
     requests: list[Request] = field(default_factory=list)
+    # GET path -> (status, JSON body), for the replay fetch tests. Kept apart
+    # from `requests`, which the upload tests count.
+    routes: dict[str, tuple[int, Any]] = field(default_factory=dict)
+    gets: list[str] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
@@ -78,6 +82,17 @@ def fake_api(status: int = 201, delay: float = 0.0) -> Iterator[FakeAPI]:
 
             payload = json.dumps({"detail": "fake"}).encode()
             self.send_response(state.status)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def do_GET(self) -> None:
+            with state.lock:
+                state.gets.append(self.path)
+                status, body = state.routes.get(self.path, (404, {"detail": "Not Found"}))
+            payload = json.dumps(body).encode()
+            self.send_response(status)
             self.send_header("content-type", "application/json")
             self.send_header("content-length", str(len(payload)))
             self.end_headers()

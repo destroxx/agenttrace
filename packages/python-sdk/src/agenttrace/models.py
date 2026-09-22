@@ -146,6 +146,9 @@ class Trace:
     status: str = "running"
     events: list[RecordedEvent] = field(default_factory=list)
     uploaded: bool = False
+    # Set when this trace was recorded while replaying another run: the id of
+    # that recording, so the API can link the replay back to it.
+    replay_of_run_id: str | None = None
     # Sequence numbers are the total order replay depends on, and a sync tool
     # may be recorded from a worker thread, so the counter, the open/closed
     # check and the append that consumes them all happen together under this

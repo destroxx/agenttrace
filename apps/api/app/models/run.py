@@ -78,6 +78,19 @@ class Run(UUIDPrimaryKeyMixin, Base):
         "metadata", JSONB, nullable=True
     )
 
+    # Set on a run produced by replaying another one: the recording it was
+    # replayed against. Nullable because most runs are recordings, not
+    # replays. SET NULL rather than CASCADE: deleting a recording should not
+    # silently take every replay of it along, and must not be blocked by them
+    # either. Same-project is enforced by the service, not the schema -- a
+    # composite FK would need a redundant unique (id, project_id) on runs.
+    replay_of_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,

@@ -13,7 +13,7 @@ from app import __version__
 from app.api import api_router
 from app.config import get_settings
 from app.db.session import dispose_engine
-from app.services.exceptions import ConflictError, NotFoundError
+from app.services.exceptions import ConflictError, NotFoundError, UnprocessableError
 
 
 @asynccontextmanager
@@ -34,6 +34,22 @@ async def _conflict_handler(_: Request, exc: ConflictError) -> JSONResponse:
     """Answer a state conflict with 409."""
     return JSONResponse(
         status_code=status.HTTP_409_CONFLICT, content={"detail": exc.detail}
+    )
+
+
+async def _unprocessable_handler(_: Request, exc: UnprocessableError) -> JSONResponse:
+    """Answer a body that fails a database-backed rule with 422.
+
+    Shaped like FastAPI's own validation errors, so a client handles one 422
+    format whether the rule was checked by pydantic or by a service.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={
+            "detail": [
+                {"type": "value_error", "loc": ["body", exc.field], "msg": exc.detail}
+            ]
+        },
     )
 
 
@@ -61,6 +77,7 @@ def create_app() -> FastAPI:
     # route handler has to translate one into the other.
     app.add_exception_handler(NotFoundError, _not_found_handler)  # type: ignore[arg-type]
     app.add_exception_handler(ConflictError, _conflict_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(UnprocessableError, _unprocessable_handler)  # type: ignore[arg-type]
 
     app.include_router(api_router)
     return app
