@@ -15,7 +15,7 @@ from typing import Any
 
 from agenttrace import transport
 from agenttrace.config import TracerConfig
-from agenttrace.models import ToolCall, Trace
+from agenttrace.models import RecordedEvent, ToolCall, Trace
 
 logger = logging.getLogger("agenttrace")
 
@@ -226,20 +226,25 @@ class AgentTracer:
             raise RuntimeError("no active trace; call record_tool_call inside trace()")
         call = ToolCall(name=name, arguments=dict(arguments or {}), response=response)
         trace.add_tool_call(call)
-        self._record(
+        call_event = self._record(
             trace,
             EVENT_TOOL_CALL,
             call_id=call.id,
             tool_name=name,
             arguments=call.arguments,
         )
-        self._record(
+        response_event = self._record(
             trace,
             EVENT_TOOL_RESPONSE,
             call_id=call.id,
             tool_name=name,
             response=response,
         )
+        # Adopt what was recorded, so the call and its events cannot disagree.
+        if call_event is not None:
+            call.arguments = call_event.arguments or {}
+        if response_event is not None:
+            call.response = response_event.response
         return call
 
     def tool(
@@ -328,10 +333,16 @@ class AgentTracer:
     def _remember(self, trace: Trace) -> None:
         self._completed.append(trace)
 
-    def _record(self, trace: Trace, event_type: str, **fields: Any) -> None:
-        """Record an event, treating any failure as a lost event, not an error."""
+    def _record(
+        self, trace: Trace, event_type: str, **fields: Any
+    ) -> RecordedEvent | None:
+        """Record an event, treating any failure as a lost event, not an error.
+
+        Returns the stored event so a caller can adopt the snapshot it took,
+        rather than snapshotting the same value a second time.
+        """
         try:
-            trace.record_event(event_type, **fields)
+            return trace.record_event(event_type, **fields)
         except Exception:
             logger.warning(
                 "agenttrace: could not record %s on trace %s",
@@ -339,6 +350,7 @@ class AgentTracer:
                 trace.id,
                 exc_info=True,
             )
+            return None
 
     def _begin_tool(
         self,
@@ -357,13 +369,15 @@ class AgentTracer:
                 "agenttrace: could not record call to %s", tool_name, exc_info=True
             )
             return None
-        self._record(
+        event = self._record(
             trace,
             EVENT_TOOL_CALL,
             call_id=call.id,
             tool_name=tool_name,
             arguments=call.arguments,
         )
+        if event is not None:
+            call.arguments = event.arguments or {}
         return call
 
     def _end_tool(
@@ -381,16 +395,14 @@ class AgentTracer:
         try:
             if call is not None:
                 call.duration_ms = duration_ms
-                if error is None:
-                    call.response = response
-                else:
+                if error is not None:
                     call.error = f"{type(error).__name__}: {error}"
         except Exception:
             logger.warning("agenttrace: could not finish call record", exc_info=True)
 
         call_id = call.id if call is not None else None
         if error is None:
-            self._record(
+            event = self._record(
                 trace,
                 EVENT_TOOL_RESPONSE,
                 call_id=call_id,
@@ -398,6 +410,8 @@ class AgentTracer:
                 response=response,
                 duration_ms=duration_ms,
             )
+            if call is not None and event is not None:
+                call.response = event.response
         else:
             self._record(
                 trace,

@@ -93,12 +93,10 @@ def snapshot_object(value: Any) -> dict[str, Any] | None:
 class ToolCall:
     """A single tool invocation and the response it produced.
 
-    Note the deliberate asymmetry with what gets uploaded: `response` here is
-    the **live object** the tool returned, because this type predates the
-    transport and callers already reach into it. The events in `Trace.events`
-    hold snapshots taken at record time, so those -- not this -- are what the
-    upload and any later replay are built from. If the agent mutates a returned
-    value, it will show up here and not in the recording.
+    `arguments` and `response` hold the same snapshots as the matching events
+    in `Trace.events`, taken at record time. There is one recording, and this
+    is a view onto it: an agent that mutates a value a tool returned cannot
+    change what either of them says.
     """
 
     name: str

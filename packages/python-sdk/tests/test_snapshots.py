@@ -166,3 +166,44 @@ def test_closed_trace_rejects_events_and_keeps_its_list() -> None:
         trace.record_event("tool_call", tool_name="late")
 
     assert trace.events == before
+
+
+def test_tool_calls_hold_the_same_snapshot_as_the_events() -> None:
+    """`trace.tool_calls` is a view onto the recording, not the live objects."""
+    tracer = AgentTracer(TracerConfig())
+
+    @tracer.tool
+    async def get_order(order_id: str) -> dict:
+        return {"status": "in_transit", "items": ["shoes"]}
+
+    async def main():
+        async with tracer.trace("agent") as trace:
+            order = await get_order("A-1")
+            order["status"] = "MUTATED"
+            order["items"].append("socks")
+        return trace
+
+    trace = asyncio.run(main())
+
+    call = trace.tool_calls[0]
+    recorded = _events(trace, "tool_response")[0]
+    original = {"status": "in_transit", "items": ["shoes"]}
+    assert call.response == recorded.response == original
+    assert call.arguments == _events(trace, "tool_call")[0].arguments == {"order_id": "A-1"}
+
+
+def test_record_tool_call_also_stores_snapshots() -> None:
+    tracer = AgentTracer(TracerConfig())
+
+    arguments = {"q": "shoes", "opts": {"page": 1}}
+    response = {"hits": ["a"]}
+
+    with tracer.trace("agent") as trace:
+        call = tracer.record_tool_call("search", arguments, response=response)
+        arguments["opts"]["page"] = 999
+        response["hits"].append("b")
+
+    assert call.arguments == {"q": "shoes", "opts": {"page": 1}}
+    assert call.response == {"hits": ["a"]}
+    assert call.arguments == _events(trace, "tool_call")[0].arguments
+    assert call.response == _events(trace, "tool_response")[0].response

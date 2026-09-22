@@ -205,8 +205,8 @@ as they are recorded. The cost is one round trip per event, paid in the agent's
 own process; the same pass also settles up front whether a value can be
 serialised at all, and rejects `NaN`/`Infinity` here -- where the value can
 still degrade to its `repr` -- rather than at the API, which would refuse the
-whole upload. `ToolCall.response` deliberately keeps the live object, because
-that type predates the transport and callers already reach into it.
+whole upload. `ToolCall` carries the same snapshots the events do, so there is
+one recording and two views onto it, never two versions of the truth.
 
 **The active trace lives in a `ContextVar`, not on the tracer.** An instance
 attribute is shared by every coroutine on the event loop, so two agent runs
@@ -229,3 +229,53 @@ still propagate. Uploads are bounded by a configurable timeout, a 409 counts
 as success because the client-generated run id makes a retry idempotent, and
 payloads are serialised with `json.dumps(default=str)` so an unserialisable
 tool argument costs a readable repr rather than the whole trace.
+
+## Known limitations and deliberate trade-offs
+
+Every item here is a choice made with its cost understood, not an oversight.
+
+**Two clocks, and neither orders a trace.** `runs.started_at` and
+`completed_at` come from the client's clock, because only the SDK knows when
+the agent actually started; `created_at` comes from the database. A run whose
+upload was delayed therefore has a `created_at` later than its `completed_at`,
+and two runs recorded on machines with skewed clocks cannot be ordered against
+each other by timestamp at all. This is why ordering within a run is
+`sequence`, never time — the timestamps are for humans reading a trace, not for
+replay.
+
+**No request-size limit on ingest.** `MAX_INGEST_EVENTS` caps the number of
+events at 10,000, but nothing caps the bytes, so a single event with a huge
+tool response can still make an arbitrarily large request. The limit belongs at
+the proxy rather than in application code, and is planned for Phase 9
+(deployment); until then a local deployment is trusting its own callers.
+
+**A hard process kill loses the in-flight run.** Nothing is sent until the run
+ends, so `SIGKILL`, a power loss or a crashed interpreter takes the whole trace
+with it. The alternative — streaming each event — costs a request per tool call
+and leaves partially stored traces behind, which replay cannot distinguish from
+an agent that legitimately stopped early. Losing a recording is recoverable;
+trusting a truncated one is not.
+
+**No authentication.** The SDK sends `AGENTTRACE_API_KEY` as a bearer token and
+the API does not check it. Anyone who can reach the API can read or write any
+project. This is fine for a local stack and unacceptable for a shared one.
+
+**The upload timeout is per socket operation.** `AGENTTRACE_TIMEOUT` is handed
+to `urllib`, where it bounds each socket read or write rather than the request
+as a whole, so a server that keeps trickling bytes can hold an upload open for
+longer than the configured value. A true wall-clock deadline would mean
+managing the connection by hand.
+
+**Unserialisable values degrade as a whole, not per field.** A value that
+cannot be JSON-encoded — `NaN`, `Infinity`, a circular reference — is recorded
+as the `repr` of the entire value, so `{"score": NaN, "ok": true}` becomes one
+string and `ok` stops being separately queryable. Salvaging field by field
+would need a recursive walker; degrading whole values keeps the rule easy to
+state and easy to spot when reading a trace.
+
+**Tools called outside the trace's context are not recorded.** The active trace
+lives in a `ContextVar`, and only `asyncio.to_thread` copies the current
+context into the worker. A tool invoked through `loop.run_in_executor` or a raw
+`threading.Thread` sees no active trace: it runs and returns normally, but
+nothing about it reaches the recording. Use `asyncio.to_thread` for synchronous
+tools.

@@ -29,3 +29,6 @@ next-env.d.ts
 # Local review scratch
 phase3a.diff
 phase3a-new-files.txt
+
+# graphify knowledge-graph output (generated, ~3MB, rebuild with /graphify)
+graphify-out/

@@ -82,7 +82,8 @@ calls be paired back up.
 Each event is **snapshotted as it is recorded** — a JSON round trip that
 detaches it from the agent's own objects. Mutating a value a tool returned
 does not rewrite the recording, which is what makes a trace usable as a replay
-fixture. `ToolCall.response` is the exception: it holds the live object.
+fixture. `trace.tool_calls` holds those same snapshots, so the call and its
+events can never disagree.
 
 `tracer.completed_traces` keeps only the **last 100** traces. A long-running
 server records one per request, and an unbounded list would be a memory leak

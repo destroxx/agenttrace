@@ -355,3 +355,59 @@ async def test_re_uploading_the_same_run_is_a_conflict(
     assert runs["total"] == 1
     events = (await api_client.get(f"/api/v1/runs/{payload['id']}/events")).json()
     assert len(events) == 4
+
+
+async def test_re_ingesting_the_same_id_does_not_overwrite_the_stored_run(
+    api_client: AsyncClient,
+) -> None:
+    """A conflicting retry must leave the first recording exactly as it was.
+
+    Stronger than the duplicate check above: the second payload carries a
+    different output and a different trace under the same id. If ingest ever
+    upserted instead of conflicting, the stored run would silently become the
+    later one -- and a replay fixture that can be rewritten after the fact is
+    worse than no fixture, because nothing would look wrong.
+    """
+    project_id = await _project(api_client)
+    original = _payload()
+    first = await api_client.post(
+        f"/api/v1/projects/{project_id}/runs/ingest", json=original
+    )
+    assert first.status_code == 201
+
+    impostor = _payload(
+        id=original["id"],
+        output={"message": "Totally different answer."},
+        status="failed",
+        metadata={"user_id": "u-2", "environment": "production"},
+        events=[
+            {"sequence": 1, "event_type": "agent_start"},
+            {
+                "sequence": 2,
+                "event_type": "tool_call",
+                "call_id": "call_zzz999",
+                "tool_name": "cancel_order",
+                "arguments": {"order_id": "99999"},
+            },
+        ],
+    )
+    second = await api_client.post(
+        f"/api/v1/projects/{project_id}/runs/ingest", json=impostor
+    )
+    assert second.status_code == 409
+
+    stored = (await api_client.get(f"/api/v1/runs/{original['id']}")).json()
+    assert stored["output"] == original["output"]
+    assert stored["status"] == original["status"]
+    assert stored["metadata"] == original["metadata"]
+
+    events = (await api_client.get(f"/api/v1/runs/{original['id']}/events")).json()
+    assert [e["sequence"] for e in events] == [1, 2, 3, 4]
+    assert [e["event_type"] for e in events] == [
+        "agent_start",
+        "tool_call",
+        "tool_response",
+        "agent_end",
+    ]
+    assert [e["tool_name"] for e in events] == [None, "get_order", "get_order", None]
+    assert "call_zzz999" not in {e["call_id"] for e in events}
