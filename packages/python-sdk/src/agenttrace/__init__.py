@@ -10,9 +10,11 @@ Recording is not allowed to change how the instrumented application behaves.
 Tool results and exceptions pass through untouched, and any failure to record
 or upload is logged to the ``agenttrace`` logger and swallowed. Replay is test
 tooling invoked on purpose, so it raises the exceptions in ``agenttrace.errors``
-instead.
+instead. `compare` (or `tracer.replay_and_compare`) turns a replay into a
+deterministic PASS/FAIL report with the findings behind it.
 """
 
+from agenttrace.comparison import ComparisonPolicy, ComparisonReport, Finding, compare
 from agenttrace.config import TracerConfig
 from agenttrace.errors import (
     AgentTraceAPIError,
@@ -31,6 +33,9 @@ __version__ = "0.1.0"
 __all__ = [
     "AgentTraceAPIError",
     "AgentTracer",
+    "ComparisonPolicy",
+    "ComparisonReport",
+    "Finding",
     "RecordedEvent",
     "RecordedToolCall",
     "Recording",
@@ -46,4 +51,5 @@ __all__ = [
     "UnmatchedToolCall",
     "UnusedRecordedCall",
     "__version__",
+    "compare",
 ]

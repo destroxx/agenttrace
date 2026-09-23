@@ -6,11 +6,11 @@ Built so far: the monorepo, a FastAPI service, PostgreSQL via Docker Compose,
 the SQLAlchemy data model and its Alembic migration, the `/api/v1` REST
 surface for projects, runs and events, a Python SDK that records a run and
 uploads it, replay of a recorded run against a new version of the agent with
-deterministic tool-call matching, and a minimal Next.js app.
+deterministic tool-call matching, a deterministic comparison of a replay
+against its recording (pass/fail with findings), and a minimal Next.js app.
 
-Explicitly **not** built: comparison of a replay against its recording
-(pass/fail), the LLM matching fallback, evaluation, regression suites, CI
-integration, a dashboard, authentication, billing, queues, AWS and Kubernetes.
+Explicitly **not** built: semantic (LLM-judged) comparison, the LLM matching
+fallback, evaluation, regression suites, a CLI, CI integration, a dashboard, authentication, billing, queues, AWS and Kubernetes.
 
 ## Repository layout
 
@@ -272,8 +272,8 @@ decorated by a different `AgentTracer` instance than the one `replay` was
 called on, and a per-tracer session would leave those tools live.
 
 **The matching ladder.** Implemented as pure functions in
-`agenttrace/matching.py`, so comparison (Phase 6) will use exactly the same
-definition of "the same call".
+`agenttrace/matching.py`, so comparison uses exactly the same definition of
+"the same call".
 
 1. *Exact* — same tool name, and the arguments serialise to identical
    canonical JSON (`sort_keys=True`, no whitespace). Both sides go through the
@@ -325,6 +325,82 @@ replays raise `ReplayError`, and unmatched calls raise into the agent. The
 agent's own exceptions are captured into the result rather than raised, since
 a replay that fails is still a result worth inspecting; `BaseException`
 propagates.
+
+## Comparison engine
+
+`compare(recording, replay_result, policy=None)` in `agenttrace/comparison.py`
+turns a replay into a `ComparisonReport`: a verdict (`pass` / `fail`) and the
+findings behind it. `tracer.replay_and_compare(...)` is replay followed by
+compare, nothing more. The module is pure — no I/O, no tracer state, no clock,
+no randomness — so the same recording and replay always give the same report,
+byte for byte from `to_dict()`.
+
+**It reads replay's facts rather than re-deriving them.** Which live call
+matched which recorded one, at which tier, and which recorded calls went
+unused are all decided once, by `matching.py`, during replay. Comparison reads
+`ReplayResult.matches` and `.unused` and never matches anything itself, so
+replay and comparison cannot disagree about what "the same call" means. The
+output diff reuses `matching.normalize` for the same reason: a difference that
+cannot tell two tool calls apart — surrounding whitespace, `2` vs `2.0`, a key
+set to `None` vs left out — is not reported for outputs either.
+
+**Three levels, strictest first.**
+
+1. *Exact* — calls and output identical; no findings.
+2. *Behavioral* — built. Each difference is a `Finding` with a code:
+   `MISSING_TOOL_CALL` (a recorded call never made), `UNEXPECTED_TOOL_CALL`
+   (a live call nothing recorded matches), `ARGUMENTS_NORMALIZED`,
+   `TOOL_ORDER_CHANGED`, `STATUS_CHANGED`, `AGENT_ERROR`,
+   `OUTPUT_STRUCTURE_CHANGED` (a key added or removed, a type, number or
+   boolean changed, a list length changed), `OUTPUT_TEXT_CHANGED` (only the
+   wording of a string differs) and `OUTPUT_MISSING`.
+3. *Semantic* — planned, not built. Whether "arriving tomorrow" and "due
+   tomorrow" mean the same thing needs a model, which is neither deterministic
+   nor free; it belongs on top of the deterministic levels, judging only what
+   they flag as a wording change.
+
+**The verdict is severity-driven and configurable.** Every finding is
+`error`, `warning` or `info`; the verdict is `fail` if any is an error. What
+counts as an error is policy, not mechanism — an agent whose tool order is
+irrelevant and one where it never is want different rules from the same
+facts — so `ComparisonPolicy` can override any code's severity, and mark
+output paths expected to vary (`"timestamp"`, `"items.*.id"`). A difference
+at an ignored path is still reported, as `info`: it never fails the verdict,
+and it is never silently hidden either. A misspelt code or severity in a policy
+raises at construction, since an override that silently did nothing would make
+a suite stricter or looser than its author believes.
+
+Defaults: errors are the missing and unexpected calls, a status change, an
+agent error, a structural output change and a missing output. Warnings are
+normalized arguments, a changed order and a text change.
+
+**Why `OUTPUT_TEXT_CHANGED` defaults to a warning.** Exact text equality is
+brittle for agents that answer in natural language: a model rephrasing its
+reply is the normal case, not a regression, and a suite that fails on every
+rewording gets ignored. Deciding whether two wordings mean the same thing is
+the semantic layer's job; until it exists the change is surfaced, not failed.
+Teams that need word-for-word output raise it to `error`.
+
+**Why order is checked, and how.** An agent that confirms a booking *after*
+making it, or refunds before checking eligibility, makes exactly the recorded
+calls and is still broken. The matched calls are taken in the order the
+replay made them, and each adjacent pair whose recorded sequences go
+backwards is one `TOOL_ORDER_CHANGED` — so moving one step from first to last
+is one finding, not one per step it jumped over. It defaults to a warning
+because concurrent tools (`asyncio.gather`, worker threads) can legitimately
+start in a different order from run to run.
+
+**Stable order.** Findings sort by severity; within a severity, run-level
+findings first, then tool calls by recorded sequence, then output fields by
+path. Unexpected calls have no recorded position and sort by tool name and
+arguments, so the report does not depend on which of several parallel calls
+happened to start first.
+
+**Why comparison lives in the SDK.** A CI job needs a verdict locally, from a
+recording it may have fetched moments ago or recorded in the same process,
+without a round trip to a service. Persisting reports belongs with regression
+suites (Phase 7), which is why `to_dict()` already has a fixed shape and key
+order; until then a report is a value the test process holds.
 
 ## Known limitations and deliberate trade-offs
 

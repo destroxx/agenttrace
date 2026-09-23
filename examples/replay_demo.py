@@ -1,12 +1,17 @@
-"""Record the support agent once, then replay three versions of it against that recording.
+"""Record the support agent once, then replay and judge four versions of it against that recording.
 
 Scripted -- no LLM, no API key. Every tool body in `async_support_agent`
 counts its real executions, and this demo checks that the count does not move
 while replaying: the tools are answered from the recording, never run.
 
-    v1  the unchanged agent          -> every call matches, nothing unused
-    v2  skips a delivery lookup      -> that recorded call is reported unused
-    v3  looks orders up in lowercase -> those calls are reported unmatched
+    v1  the unchanged agent          -> every call matches            -> PASS
+    v2  skips a delivery lookup      -> that recorded call is unused  -> FAIL
+    v3  looks orders up in lowercase -> those calls are unmatched     -> FAIL
+    v4  rewords the reply's sign-off -> every call matches            -> PASS, with a warning
+
+After each version's side-by-side table comes the comparison report
+`tracer.replay_and_compare` produced for it: the verdict, then one line per
+finding.
 
 Run from the repo root with the workspace virtualenv:
 
@@ -22,7 +27,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from agenttrace import Recording, ReplayResult
+from agenttrace import ComparisonReport, Recording, ReplayResult
 from async_support_agent import (
     REAL_CALLS,
     REQUEST,
@@ -34,7 +39,7 @@ from async_support_agent import (
     tracer,
 )
 
-# --- the three versions under test ------------------------------------------
+# --- the four versions under test ------------------------------------------
 #
 # Each is a complete entry point, as a customer would ship it: it opens its own
 # trace and calls the same tools. Only v1 is the code that was recorded.
@@ -68,10 +73,30 @@ async def run_agent_v3(request: dict) -> str:
     return reply
 
 
+async def run_agent_v4(request: dict) -> str:
+    """Same tools, same calls; signs the reply off differently.
+
+    The meaning is unchanged, so this should pass -- but only a semantic
+    comparator could know that, so it passes with an OUTPUT_TEXT_CHANGED
+    warning rather than silently.
+    """
+    async with tracer.trace("support-agent", input=request, agent_version="v4.0.0") as trace:
+        customer = await get_customer(request["customer_id"])
+        orders = await asyncio.gather(*(get_order(i) for i in request["order_ids"]))
+        lines = []
+        for order in orders:
+            status = await get_delivery_status(order["id"])
+            lines.append(f"{order['item']} ({order['id']}): {status}")
+        reply = format_reply(customer["name"], lines).replace("— Support", "— The support team")
+        trace.set_output({"message": reply})
+    return reply
+
+
 VERSIONS = [
     ("v1", "unchanged", run_agent),
     ("v2", "skips a delivery lookup", run_agent_v2),
     ("v3", "lowercases order ids", run_agent_v3),
+    ("v4", "rewords the sign-off", run_agent_v4),
 ]
 
 # --- rendering ---------------------------------------------------------------
@@ -128,7 +153,9 @@ def _print_table(rows: list[tuple[str, str, str, str]]) -> None:
         print("  " + "  ".join(cell.ljust(w) for cell, w in zip(row, widths, strict=True)).rstrip())
 
 
-def _print_result(label: str, about: str, result: ReplayResult, recording: Recording) -> None:
+def _print_result(
+    label: str, about: str, result: ReplayResult, recording: Recording, report: ComparisonReport
+) -> None:
     print(f"\n{label} — {about}")
     _print_table(_rows(result))
     s = result.summary
@@ -142,6 +169,8 @@ def _print_result(label: str, about: str, result: ReplayResult, recording: Recor
     if result.trace is not None:
         uploaded = f", uploaded {result.trace.uploaded}" if tracer.config.upload_enabled else ""
         print(f"  replay run {result.trace.id} (replay_of {result.trace.replay_of_run_id}{uploaded})")
+    print()
+    print("  " + report.format().replace("\n", "\n  "))
 
 
 async def main() -> None:
@@ -161,12 +190,15 @@ async def main() -> None:
         recording = Recording.from_trace(recorded_trace)
 
     REAL_CALLS.clear()
+    verdicts: list[str] = []
     for label, about, agent in VERSIONS:
-        result = await tracer.replay(recording, agent)
-        _print_result(label, about, result, recording)
+        result, report = await tracer.replay_and_compare(recording, agent)
+        _print_result(label, about, result, recording, report)
+        verdicts.append(f"{label} {report.verdict.upper()}")
 
     executed = sum(REAL_CALLS.values())
-    print(f"\nreal tool executions during all three replays: {executed}")
+    print(f"\nverdicts: {' · '.join(verdicts)}")
+    print(f"real tool executions during all {len(VERSIONS)} replays: {executed}")
     assert executed == 0, f"replay ran real tools: {dict(REAL_CALLS)}"
 
 

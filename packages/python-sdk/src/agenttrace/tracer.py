@@ -15,6 +15,7 @@ from typing import Any
 
 from agenttrace import replay as _replay
 from agenttrace import transport
+from agenttrace.comparison import ComparisonPolicy, ComparisonReport, compare
 from agenttrace.config import TracerConfig
 from agenttrace.errors import ReplayedToolError, ReplayError
 from agenttrace.models import RecordedEvent, ToolCall, Trace, snapshot_object
@@ -518,6 +519,22 @@ class AgentTracer:
         finally:
             _replay.deactivate(token)
         return session.result(return_value, error)
+
+    async def replay_and_compare(
+        self,
+        recording: Recording,
+        agent_fn: Callable[[dict[str, Any]], Any],
+        *,
+        agent_version: str | None = None,
+        policy: ComparisonPolicy | None = None,
+    ) -> tuple[_replay.ReplayResult, ComparisonReport]:
+        """`replay`, then `compare` the result against `recording`.
+
+        Nothing more than the two calls: the result is returned alongside the
+        report so a failing verdict can be investigated from the same run.
+        """
+        result = await self.replay(recording, agent_fn, agent_version=agent_version)
+        return result, compare(recording, result, policy)
 
     def _upload(self, trace: Trace) -> None:
         """Send a finished trace, if there is anywhere to send it."""

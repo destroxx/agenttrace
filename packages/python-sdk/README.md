@@ -141,6 +141,68 @@ purpose, so it fails loudly:
 - **Recorded errors keep only a type name and message** — no traceback,
   attributes or chain.
 
+## Comparison
+
+`compare` turns a replay into a verdict. It is deterministic — no network, no
+LLM, no clock — so the same recording and replay always give the same report.
+
+```python
+from agenttrace import ComparisonPolicy, compare
+
+result, report = await tracer.replay_and_compare(recording, run_agent)
+# or, from a result you already have:
+report = compare(recording, result, policy=None)
+
+report.verdict            # "pass" or "fail"
+report.passed             # verdict == "pass"
+report.findings           # tuple of Finding(code, severity, message, details)
+report.counts             # {"by_severity": {...}, "by_code": {...}}
+print(report.format())    # verdict line, then one line per finding
+report.to_dict()          # JSON-serialisable, stable key order
+```
+
+Comparison reads what replay already decided — which call matched which, at
+which tier, and what went unused — and never re-matches, so the two cannot
+disagree about what "the same call" means.
+
+| Code | Default | Meaning |
+| --- | --- | --- |
+| `AGENT_ERROR` | error | The agent raised during the replay (`result.error`) |
+| `STATUS_CHANGED` | error | Recording and replay ended in different statuses |
+| `MISSING_TOOL_CALL` | error | A recorded call the replay never made — a skipped step |
+| `UNEXPECTED_TOOL_CALL` | error | A live call that matched nothing recorded |
+| `ARGUMENTS_NORMALIZED` | warning | Matched only after normalization; arguments not identical |
+| `TOOL_ORDER_CHANGED` | warning | Matched calls ran in a different order; one finding per point where the order went backwards |
+| `OUTPUT_MISSING` | error | One side has an output and the other does not |
+| `OUTPUT_STRUCTURE_CHANGED` | error | An output key added or removed, a type, number or boolean changed, a list length changed |
+| `OUTPUT_TEXT_CHANGED` | warning | Only the wording of a string in the output differs |
+
+The verdict is `fail` if any finding has severity `error`. Outputs are diffed
+after the same `normalize` matching uses, so surrounding whitespace, `2` vs
+`2.0` and a `None`-valued key vs a missing one are not reported at all.
+
+`OUTPUT_TEXT_CHANGED` is a warning by default: exact text equality is brittle
+for agents that answer in natural language, and deciding whether two wordings
+mean the same thing is the planned semantic layer's job. Raise it to `error`
+if your agent's output must match word for word.
+
+### Policy
+
+```python
+policy = ComparisonPolicy(
+    severity_overrides={"OUTPUT_TEXT_CHANGED": "error", "TOOL_ORDER_CHANGED": "info"},
+    ignore_paths=["timestamp", "reply.generated_at", "items.*.id"],
+)
+```
+
+- `severity_overrides` — code → `"error"` / `"warning"` / `"info"`. An
+  unknown code or severity raises `ValueError` when the policy is built.
+- `ignore_paths` — dot paths into the output that are expected to vary. A
+  difference at the path or anywhere beneath it is reported as `info`, so it
+  never fails the verdict but stays visible. `*` matches any list index
+  (`items.*.id`); list indexes are numbers in a path (`items.0.id`). A dict key
+  containing a dot cannot be addressed.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -223,5 +285,5 @@ logging.getLogger("agenttrace").setLevel(logging.DEBUG)
 
 ## Scope
 
-Recording, upload and replay are implemented. Comparison (pass/fail) and
-evaluation are later milestones.
+Recording, upload, replay and deterministic comparison are implemented.
+Semantic comparison, regression suites and evaluation are later milestones.

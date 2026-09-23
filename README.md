@@ -29,12 +29,14 @@ be replayed against that recording instead of against production.
                                   calling the
                                   real tools
 
-  ✅ implemented   ✅ implemented  ✅ implemented   ⬜ planned
+  ✅ implemented   ✅ implemented  ✅ implemented   ✅ deterministic
+                                                   ⬜ semantic
 ```
 
-**Record**, **Save** and **Replay** work today. **Compare** is not built —
-a replay reports which tool calls matched, which did not and which recorded
-calls went unused, but nothing yet turns that into a pass or a fail.
+All four steps work today. **Compare** is deterministic: it turns a replay into
+PASS or FAIL with a finding for each difference (a skipped step, an unexpected
+call, a changed output field). Judging whether two differently worded answers
+mean the same thing — semantic comparison — is not built yet.
 
 ## Status
 
@@ -46,7 +48,9 @@ calls went unused, but nothing yet turns that into a pass or a fail.
 | ✅ | One-request ingest | A whole finished run and its trace in a single transaction |
 | ✅ | Python SDK recorder | Async/sync tracing, `@tracer.tool`, end-of-run upload, record-time snapshots |
 | ✅ | Replay | Re-run an agent's own entry point with recorded tool results served back; exact → normalized matching |
-| ⬜ | Compare & regression suites | Diff a replay against its recording; run suites in CI |
+| ✅ | Compare (deterministic) | Replay → PASS/FAIL with findings; configurable severities and ignored output paths |
+| ⬜ | Semantic comparison | Judge whether a reworded answer means the same thing; reworded text is a warning until then |
+| ⬜ | Regression suites & CI | Persist reports, run suites of recordings in CI |
 | ⬜ | Dashboard | Postponed; `apps/web` is a single page showing API health |
 | ⬜ | Auth, billing, queues, deployment | Not started; the SDK sends an API key the API does not check |
 
@@ -257,9 +261,42 @@ pointing at the recording. A call no recording matches raises
 .venv/bin/python examples/replay_demo.py
 ```
 
-records the example agent once and replays three versions of it — unchanged, one
-that skips a step, and one that looks orders up with the wrong id — printing a
-side-by-side table of each, and proving no real tool ran.
+records the example agent once and replays four versions of it — unchanged, one
+that skips a step, one that looks orders up with the wrong id, and one that only
+rewords its reply — printing a side-by-side table and a comparison report for
+each, and proving no real tool ran.
+
+### Compare
+
+`replay_and_compare` replays and then judges the replay against its recording:
+
+```python
+from agenttrace import ComparisonPolicy
+
+result, report = await tracer.replay_and_compare(
+    recording,
+    run_agent,
+    agent_version="v2.0.0",
+    policy=ComparisonPolicy(ignore_paths=["generated_at"]),   # optional
+)
+print(report.format())
+assert report.passed
+```
+
+```
+FAIL  1 error, 0 warnings, 0 info  (recording a1b2… -> replay 06ac…)
+  error    MISSING_TOOL_CALL  get_delivery_status(order_id="B-2") was recorded (seq 9) but never called
+```
+
+The verdict is FAIL if any finding is an error. By default a skipped or
+unexpected tool call, a changed status, an agent error and a structural output
+change (a key added or removed, a number changed) are errors; arguments that
+matched only after normalization, a changed call order and **reworded output
+text** are warnings. Rewording is a warning because exact text equality is
+brittle for natural-language agents; judging meaning is the planned semantic
+layer's job. `ComparisonPolicy(severity_overrides={"OUTPUT_TEXT_CHANGED":
+"error"})` makes it strict. `compare(recording, result, policy)` works on any
+replay result, and `report.to_dict()` is a stable, JSON-serialisable form.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
