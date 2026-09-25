@@ -28,3 +28,12 @@ class ProjectResponse(BaseModel):
     description: str | None
     created_at: datetime
     updated_at: datetime
+
+
+class ProjectSummary(ProjectResponse):
+    """A project as it appears in a list, with the counts a project index shows."""
+
+    run_count: int = Field(description="How many runs the project holds.")
+    last_run_at: datetime | None = Field(
+        description="When the project's newest run was stored; null when it has none."
+    )

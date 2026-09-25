@@ -34,6 +34,9 @@ class FakeAPI:
     delay: float = 0.0
     url: str = ""
     requests: list[Request] = field(default_factory=list)
+    # POST path -> status, overriding `status` for that path only, so one
+    # test can accept a trace upload and refuse the report that follows it.
+    post_statuses: dict[str, int] = field(default_factory=dict)
     # GET path -> (status, JSON body), for the replay fetch tests. Kept apart
     # from `requests`, which the upload tests count.
     routes: dict[str, tuple[int, Any]] = field(default_factory=dict)
@@ -81,7 +84,9 @@ def fake_api(status: int = 201, delay: float = 0.0) -> Iterator[FakeAPI]:
                 time.sleep(state.delay)
 
             payload = json.dumps({"detail": "fake"}).encode()
-            self.send_response(state.status)
+            with state.lock:
+                status = state.post_statuses.get(self.path, state.status)
+            self.send_response(status)
             self.send_header("content-type", "application/json")
             self.send_header("content-length", str(len(payload)))
             self.end_headers()

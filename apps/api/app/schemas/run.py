@@ -132,3 +132,22 @@ class RunResponse(BaseModel):
     completed_at: datetime | None
     created_at: datetime
     replay_of_run_id: uuid.UUID | None = None
+
+
+class RunSummary(RunResponse):
+    """A run as it appears in a list: the run, plus what a table of runs shows.
+
+    Only list items carry these. They are computed by the list query itself;
+    the single-run endpoint returns the events and the report separately, so
+    repeating them there would be a second source for the same facts.
+    """
+
+    event_count: int = Field(description="How many events the run recorded.")
+    duration_ms: int | None = Field(
+        description=(
+            "completed_at - started_at, from the client's clock; null while running."
+        )
+    )
+    verdict: Literal["pass", "fail"] | None = Field(
+        description="The verdict of this run's comparison report; null when it has none."
+    )

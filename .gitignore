@@ -33,3 +33,6 @@ phase6.diff
 
 # graphify knowledge-graph output (generated, ~3MB, rebuild with /graphify)
 graphify-out/
+
+# Tool output
+.playwright-mcp/

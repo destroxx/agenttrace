@@ -19,7 +19,10 @@ Run from the repo root with the workspace virtualenv:
 
 Without AGENTTRACE_PROJECT_ID everything stays in memory. With it (and the API
 running), the recording is uploaded, fetched back with `Recording.from_api`,
-and each replay is uploaded pointing at it through `replay_of_run_id`.
+each replay is uploaded pointing at it through `replay_of_run_id`, and each
+comparison report is uploaded next to its replay run -- which is what the
+dashboard's run list and report pages show. A failed report upload is logged
+to the `agenttrace` logger, never raised.
 """
 
 from __future__ import annotations
@@ -192,7 +195,9 @@ async def main() -> None:
     REAL_CALLS.clear()
     verdicts: list[str] = []
     for label, about, agent in VERSIONS:
-        result, report = await tracer.replay_and_compare(recording, agent)
+        # Uploading is the default whenever upload is configured; spelled out
+        # here so the demo reads the same in both modes.
+        result, report = await tracer.replay_and_compare(recording, agent, upload_report=live)
         _print_result(label, about, result, recording, report)
         verdicts.append(f"{label} {report.verdict.upper()}")
 

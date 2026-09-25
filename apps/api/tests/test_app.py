@@ -32,9 +32,11 @@ def test_app_exposes_exactly_the_documented_surface(app: FastAPI) -> None:
         "/health",
         "/api/v1/projects",
         "/api/v1/projects/{project_id}",
+        "/api/v1/projects/{project_id}/comparisons",
         "/api/v1/projects/{project_id}/runs",
         "/api/v1/projects/{project_id}/runs/ingest",
         "/api/v1/runs/{run_id}",
+        "/api/v1/runs/{run_id}/comparison",
         "/api/v1/runs/{run_id}/complete",
         "/api/v1/runs/{run_id}/events",
     }
@@ -50,6 +52,10 @@ def test_domain_errors_are_documented_on_the_endpoints(app: FastAPI) -> None:
     ingest = paths["/api/v1/projects/{project_id}/runs/ingest"]["post"]["responses"]
     assert "404" in ingest
     assert "409" in ingest
+    comparison = paths["/api/v1/runs/{run_id}/comparison"]
+    assert {"404", "409", "422"} <= set(comparison["post"]["responses"])
+    assert "404" in comparison["get"]["responses"]
+    assert "404" in paths["/api/v1/projects/{project_id}/comparisons"]["get"]["responses"]
 
 
 async def test_cors_allows_the_web_app_origin(app: FastAPI) -> None:

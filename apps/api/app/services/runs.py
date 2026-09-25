@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import BigInteger, Row, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.comparison import Comparison
 from app.models.event import Event
 from app.models.project import Project
 from app.models.run import Run, RunStatus
@@ -17,7 +19,7 @@ from app.services.exceptions import ConflictError, NotFoundError, UnprocessableE
 from app.services.pagination import Pagination
 
 
-def _violated_constraint(exc: IntegrityError) -> str | None:
+def violated_constraint(exc: IntegrityError) -> str | None:
     """Name the constraint an IntegrityError tripped, if the driver says.
 
     The driver's exception is wrapped more than once on the way up, and only
@@ -76,23 +78,57 @@ class RunService:
         return run
 
     async def list_for_project(
-        self, project_id: uuid.UUID, pagination: Pagination
-    ) -> tuple[list[Run], int]:
-        """Return one page of a project's runs, newest first."""
+        self,
+        project_id: uuid.UUID,
+        pagination: Pagination,
+        status: RunStatus | None = None,
+    ) -> tuple[Sequence[Row[tuple[Run, int, int | None, str | None]]], int]:
+        """Return one page of a project's runs, newest first, with list-only facts.
+
+        Each row is `(run, event_count, duration_ms, verdict)`. They are
+        computed by the same query that pages the runs -- a correlated count
+        served by the events' run_id index, and a join to the run's report --
+        so a page costs a fixed number of queries however many runs it holds.
+        Reading them per run would be one query per row, and a dashboard asks
+        for this page on every visit.
+
+        `duration_ms` is wall-clock time from the client's own timestamps, so
+        it is only as good as that clock; it is None while a run is running.
+        """
         if await self._session.get(Project, project_id) is None:
             raise NotFoundError("Project", project_id)
 
-        total = await self._session.scalar(
-            select(func.count()).select_from(Run).where(Run.project_id == project_id)
+        conditions = [Run.project_id == project_id]
+        if status is not None:
+            conditions.append(Run.status == status)
+
+        event_count = (
+            select(func.count(Event.id))
+            .where(Event.run_id == Run.id)
+            .correlate(Run)
+            .scalar_subquery()
         )
-        result = await self._session.scalars(
-            select(Run)
-            .where(Run.project_id == project_id)
+        duration_ms = func.floor(
+            func.extract("epoch", Run.completed_at - Run.started_at) * 1000
+        ).cast(BigInteger)
+
+        total = await self._session.scalar(
+            select(func.count()).select_from(Run).where(*conditions)
+        )
+        result = await self._session.execute(
+            select(
+                Run,
+                event_count.label("event_count"),
+                duration_ms.label("duration_ms"),
+                Comparison.verdict.label("verdict"),
+            )
+            .outerjoin(Comparison, Comparison.replay_run_id == Run.id)
+            .where(*conditions)
             .order_by(Run.created_at.desc(), Run.id)
             .offset(pagination.offset)
             .limit(pagination.limit)
         )
-        return list(result), int(total or 0)
+        return result.all(), int(total or 0)
 
     async def ingest(self, project_id: uuid.UUID, data: RunIngest) -> Run:
         """Store one already-finished run and its whole trace at once.
@@ -152,7 +188,7 @@ class RunService:
             await self._session.commit()
         except IntegrityError as exc:
             await self._session.rollback()
-            violated = _violated_constraint(exc)
+            violated = violated_constraint(exc)
             if violated == "pk_runs":
                 raise ConflictError(f"Run {data.id} already exists.") from exc
             if violated == "fk_runs_replay_of_run_id_runs":

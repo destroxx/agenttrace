@@ -43,15 +43,15 @@ mean the same thing — semantic comparison — is not built yet.
 | | Milestone | What it means |
 | --- | --- | --- |
 | ✅ | Foundation | Monorepo, FastAPI service, Postgres via Compose, Next.js app |
-| ✅ | Data model & REST API | `Project ──< Run ──< Event`, 11 endpoints, Alembic migrations |
+| ✅ | Data model & REST API | `Project ──< Run ──< Event`, `Comparison`, 14 endpoints, Alembic migrations |
 | ✅ | Frozen terminal runs | A finished run rejects new events; row lock serialises close vs. append |
 | ✅ | One-request ingest | A whole finished run and its trace in a single transaction |
 | ✅ | Python SDK recorder | Async/sync tracing, `@tracer.tool`, end-of-run upload, record-time snapshots |
 | ✅ | Replay | Re-run an agent's own entry point with recorded tool results served back; exact → normalized matching |
 | ✅ | Compare (deterministic) | Replay → PASS/FAIL with findings; configurable severities and ignored output paths |
 | ⬜ | Semantic comparison | Judge whether a reworded answer means the same thing; reworded text is a warning until then |
-| ⬜ | Regression suites & CI | Persist reports, run suites of recordings in CI |
-| ⬜ | Dashboard | Postponed; `apps/web` is a single page showing API health |
+| ⬜ | Regression suites & CI | Run suites of recordings in CI |
+| ✅ | Dashboard | Read-only: projects, runs with verdicts, a run's timeline and its comparison report |
 | ⬜ | Auth, billing, queues, deployment | Not started; the SDK sends an API key the API does not check |
 
 ## Key design decisions
@@ -190,7 +190,8 @@ npm install
 npm run dev
 ```
 
-It is a single page showing API health. There is no dashboard yet.
+A read-only dashboard: projects, their runs with PASS/FAIL verdicts, each run's
+timeline, and its comparison report. It changes nothing.
 
 ---
 
@@ -324,17 +325,21 @@ because it describes the process rather than the API contract.
 | GET | `/api/v1/projects/{project_id}` | Get a project |
 | POST | `/api/v1/projects/{project_id}/runs` | Start a run (status `running`) |
 | POST | `/api/v1/projects/{project_id}/runs/ingest` | Upload one finished run and its whole trace |
-| GET | `/api/v1/projects/{project_id}/runs` | List a project's runs (paginated) |
+| GET | `/api/v1/projects/{project_id}/runs` | List a project's runs with event count, duration and verdict (paginated, `?status=`) |
 | GET | `/api/v1/runs/{run_id}` | Get a run |
 | POST | `/api/v1/runs/{run_id}/complete` | Record output and final status |
 | POST | `/api/v1/runs/{run_id}/events` | Append an event |
 | GET | `/api/v1/runs/{run_id}/events` | List events ordered by `sequence` |
+| POST | `/api/v1/runs/{run_id}/comparison` | Store the comparison report for a replay run |
+| GET | `/api/v1/runs/{run_id}/comparison` | Get a replay run's comparison report |
+| GET | `/api/v1/projects/{project_id}/comparisons` | List a project's reports, counts only (paginated) |
 
 Errors: `404` for a missing project or run; `409` for a duplicate event
 sequence, a run that has already finished, an event posted to a finished run, or
-re-uploading a run id that is already stored; `422` for a malformed body, a
-path id that is not a UUID, or an ingest `replay_of_run_id` that is not a run in
-the same project.
+re-uploading a run id that is already stored, or a second report for the same
+run; `422` for a malformed body, a path id that is not a UUID, an ingest
+`replay_of_run_id` that is not a run in the same project, or a report on a run
+that is not a replay of the report's recording.
 
 Paginated endpoints take `?page=1&page_size=20` (`page_size` caps at 100) and
 return `{"items": [...], "total": n, "page": n, "page_size": n}`.
@@ -410,7 +415,7 @@ ruff check apps/api packages/python-sdk examples
 cd apps/web && npm run lint && npm run build && npx tsc --noEmit
 ```
 
-Currently 82 API tests and 85 SDK tests. The API suite owns a separate database
+Currently 103 API tests and 137 SDK tests. The API suite owns a separate database
 and rolls back every test, so running it never touches development data.
 
 Migrations are reversible; the round trip is worth checking after a schema

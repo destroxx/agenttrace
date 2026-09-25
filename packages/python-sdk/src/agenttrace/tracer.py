@@ -527,14 +527,43 @@ class AgentTracer:
         *,
         agent_version: str | None = None,
         policy: ComparisonPolicy | None = None,
+        upload_report: bool = True,
     ) -> tuple[_replay.ReplayResult, ComparisonReport]:
         """`replay`, then `compare` the result against `recording`.
 
-        Nothing more than the two calls: the result is returned alongside the
-        report so a failing verdict can be investigated from the same run.
+        The result is returned alongside the report so a failing verdict can
+        be investigated from the same run. When uploading is configured the
+        report is also sent to the API, next to the replay run it describes,
+        so the dashboard can show it; `upload_report=False` keeps it local,
+        and `True` changes nothing when there is nowhere to upload to. The
+        upload follows the recording rules -- a failure is logged, never
+        raised -- because the verdict is the caller's answer either way.
         """
         result = await self.replay(recording, agent_fn, agent_version=agent_version)
-        return result, compare(recording, result, policy)
+        report = compare(recording, result, policy)
+        if upload_report and self._config.upload_enabled:
+            # Blocking stdlib HTTP, so off the event loop like the trace upload.
+            await asyncio.to_thread(self.upload_comparison, report)
+        return result, report
+
+    def upload_comparison(self, report: ComparisonReport) -> bool:
+        """Send a comparison report to the API. Returns whether it is now stored.
+
+        Never raises: like recording, a failed upload is logged to the
+        `agenttrace` logger and answered with False. Blocking; call it with
+        `asyncio.to_thread` from async code.
+        """
+        if not self._config.upload_enabled:
+            return False
+        try:
+            return transport.upload_comparison(report.to_dict(), self._config)
+        except Exception:
+            logger.warning(
+                "agenttrace: could not upload comparison for run %s",
+                report.replay_run_id,
+                exc_info=True,
+            )
+            return False
 
     def _upload(self, trace: Trace) -> None:
         """Send a finished trace, if there is anywhere to send it."""

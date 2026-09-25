@@ -186,6 +186,21 @@ for agents that answer in natural language, and deciding whether two wordings
 mean the same thing is the planned semantic layer's job. Raise it to `error`
 if your agent's output must match word for word.
 
+### Uploading the report
+
+When uploading is configured (`AGENTTRACE_PROJECT_ID` is set),
+`replay_and_compare` also sends the report to the API, stored next to the
+replay run it describes, so the dashboard can show the verdict. Pass
+`upload_report=False` to keep it local. The upload follows the recording
+rules: a failure is logged to the `agenttrace` logger and never raised, and it
+never changes the verdict — the report you get back is the answer either way.
+A report the API already holds counts as stored, so a retry is safe.
+
+To upload a report you built yourself with `compare`, call
+`tracer.upload_comparison(report)`; it returns whether the report is now
+stored and, likewise, never raises. The API accepts a report only on a replay
+of the report's recording.
+
 ### Policy
 
 ```python

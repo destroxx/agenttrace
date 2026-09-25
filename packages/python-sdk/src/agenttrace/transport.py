@@ -1,4 +1,4 @@
-"""Uploading a finished trace to the AgentTrace API.
+"""Uploading finished traces, and comparison reports, to the AgentTrace API.
 
 One request per run, at the end of the run: the API's ingest endpoint writes
 the run and every event in a single transaction, so a trace is stored whole or
@@ -16,6 +16,7 @@ import json
 import logging
 import urllib.error
 import urllib.request
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -25,8 +26,10 @@ from agenttrace.models import RecordedEvent, Trace
 logger = logging.getLogger("agenttrace")
 
 INGEST_PATH = "/api/v1/projects/{project_id}/runs/ingest"
+COMPARISON_PATH = "/api/v1/runs/{run_id}/comparison"
 
-# The API answers 201 on success and 409 when this run id is already stored.
+# The API answers 201 on success, and 409 when this run id -- or a report for
+# this run -- is already stored.
 _CREATED = 201
 _CONFLICT = 409
 
@@ -100,19 +103,52 @@ def upload(trace: Trace, config: TracerConfig) -> bool:
     """
     if not config.upload_enabled:
         return False
+    url = f"{config.api_url}{INGEST_PATH.format(project_id=config.project_id)}"
+    return _post(url, lambda: build_payload(trace), config, f"trace {trace.id}")
 
+
+def upload_comparison(report: Mapping[str, Any], config: TracerConfig) -> bool:
+    """Send one comparison report, as `ComparisonReport.to_dict()` built it.
+
+    Stored against its replay run, which must already be uploaded -- replay
+    uploads the replay's trace before the agent returns, so by the time a
+    report exists its run has been sent. The same rules as `upload`: never
+    raises, and a 409 (a report already stored for that run) answers True,
+    which makes a retried upload harmless. A report with no replay run has
+    nothing to be stored against and is not sent.
+    """
+    if not config.upload_enabled:
+        return False
+    replay_run_id = report.get("replay_run_id")
+    if not replay_run_id:
+        logger.warning(
+            "agenttrace: comparison report has no replay run id; not uploaded"
+        )
+        return False
+    url = f"{config.api_url}{COMPARISON_PATH.format(run_id=replay_run_id)}"
+    return _post(url, lambda: dict(report), config, f"comparison for run {replay_run_id}")
+
+
+def _post(
+    url: str,
+    build: Callable[[], Any],
+    config: TracerConfig,
+    what: str,
+) -> bool:
+    """POST one JSON body to the API. Returns whether it is now stored; never raises.
+
+    `build` is called in here, not by the caller, so a payload that fails to
+    build is one more logged failure rather than an exception escaping.
+    """
     try:
         # `default=str` keeps a datetime or a custom object in a tool payload
         # from failing the whole upload; a readable repr beats a lost trace.
-        body = json.dumps(build_payload(trace), default=str).encode("utf-8")
+        body = json.dumps(build(), default=str).encode("utf-8")
     except Exception as exc:
-        logger.warning(
-            "agenttrace: could not serialise trace %s; not uploaded: %r", trace.id, exc
-        )
+        logger.warning("agenttrace: could not serialise %s; not uploaded: %r", what, exc)
         logger.debug("agenttrace: serialisation failure detail", exc_info=True)
         return False
 
-    url = f"{config.api_url}{INGEST_PATH.format(project_id=config.project_id)}"
     request = urllib.request.Request(
         url,
         data=body,
@@ -127,21 +163,19 @@ def upload(trace: Trace, config: TracerConfig) -> bool:
             request, timeout=config.timeout_seconds
         ) as response:
             if response.status == _CREATED:
-                logger.debug("agenttrace: uploaded trace %s", trace.id)
+                logger.debug("agenttrace: uploaded %s", what)
                 return True
             logger.warning(
-                "agenttrace: unexpected status %s uploading trace %s",
-                response.status,
-                trace.id,
+                "agenttrace: unexpected status %s uploading %s", response.status, what
             )
             return False
     except urllib.error.HTTPError as exc:
         if exc.code == _CONFLICT:
-            logger.debug("agenttrace: trace %s is already stored", trace.id)
+            logger.debug("agenttrace: %s is already stored", what)
             return True
         logger.warning(
-            "agenttrace: upload of trace %s failed with status %s: %s",
-            trace.id,
+            "agenttrace: upload of %s failed with status %s: %s",
+            what,
             exc.code,
             _response_body(exc),
         )
@@ -151,6 +185,6 @@ def upload(trace: Trace, config: TracerConfig) -> bool:
         # One readable line by default and the traceback only under DEBUG -- an
         # unreachable API is an expected condition in someone else's process,
         # and a stack dump per run would be the SDK making itself the problem.
-        logger.warning("agenttrace: upload of trace %s failed: %r", trace.id, exc)
+        logger.warning("agenttrace: upload of %s failed: %r", what, exc)
         logger.debug("agenttrace: upload failure detail", exc_info=True)
         return False

@@ -6,12 +6,20 @@ returns. A route never serialises a SQLAlchemy object directly.
 """
 
 from app.schemas.common import ErrorResponse, Page
+from app.schemas.comparison import (
+    ComparisonCreate,
+    ComparisonResponse,
+    ComparisonSummary,
+)
 from app.schemas.event import EventCreate, EventResponse
 from app.schemas.health import ComponentHealth, HealthReport
-from app.schemas.project import ProjectCreate, ProjectResponse
-from app.schemas.run import RunComplete, RunCreate, RunResponse
+from app.schemas.project import ProjectCreate, ProjectResponse, ProjectSummary
+from app.schemas.run import RunComplete, RunCreate, RunResponse, RunSummary
 
 __all__ = [
+    "ComparisonCreate",
+    "ComparisonResponse",
+    "ComparisonSummary",
     "ComponentHealth",
     "ErrorResponse",
     "EventCreate",
@@ -20,7 +28,9 @@ __all__ = [
     "Page",
     "ProjectCreate",
     "ProjectResponse",
+    "ProjectSummary",
     "RunComplete",
     "RunCreate",
     "RunResponse",
+    "RunSummary",
 ]

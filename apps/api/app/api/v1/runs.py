@@ -8,12 +8,14 @@ not have to remember which project it belongs to.
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.api.dependencies import PaginationDep, RunServiceDep
+from app.models.run import RunStatus
 from app.schemas.common import Page
-from app.schemas.run import RunComplete, RunCreate, RunIngest, RunResponse
+from app.schemas.run import RunComplete, RunCreate, RunIngest, RunResponse, RunSummary
 
 router = APIRouter(tags=["runs"])
 
@@ -67,17 +69,34 @@ async def ingest_run(
 
 @router.get(
     "/projects/{project_id}/runs",
-    response_model=Page[RunResponse],
+    response_model=Page[RunSummary],
     summary="List a project's runs",
     responses={status.HTTP_404_NOT_FOUND: {"description": "No such project."}},
 )
 async def list_project_runs(
-    project_id: uuid.UUID, service: RunServiceDep, pagination: PaginationDep
-) -> Page[RunResponse]:
-    """Return one page of the project's runs, newest first."""
-    runs, total = await service.list_for_project(project_id, pagination)
-    return Page[RunResponse](
-        items=[RunResponse.model_validate(r) for r in runs],
+    project_id: uuid.UUID,
+    service: RunServiceDep,
+    pagination: PaginationDep,
+    run_status: Annotated[
+        RunStatus | None, Query(alias="status", description="Only runs in this status.")
+    ] = None,
+) -> Page[RunSummary]:
+    """Return one page of the project's runs, newest first.
+
+    Each item also carries its event count, duration and comparison verdict,
+    so a table of runs needs no request per row.
+    """
+    rows, total = await service.list_for_project(project_id, pagination, run_status)
+    return Page[RunSummary](
+        items=[
+            RunSummary(
+                **RunResponse.model_validate(run).model_dump(),
+                event_count=event_count,
+                duration_ms=duration_ms,
+                verdict=verdict,
+            )
+            for run, event_count, duration_ms, verdict in rows
+        ],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,

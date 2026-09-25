@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
+from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import Row, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.project import Project
+from app.models.run import Run
 from app.schemas.project import ProjectCreate
 from app.services.exceptions import NotFoundError
 from app.services.pagination import Pagination
@@ -35,15 +38,34 @@ class ProjectService:
             raise NotFoundError("Project", project_id)
         return project
 
-    async def list(self, pagination: Pagination) -> tuple[list[Project], int]:
-        """Return one page of projects, newest first, with the total count."""
+    async def list(
+        self, pagination: Pagination
+    ) -> tuple[Sequence[Row[tuple[Project, int, datetime | None]]], int]:
+        """Return one page of projects, newest first, with the total count.
+
+        Each row is `(project, run_count, last_run_at)`, computed in the same
+        query as correlated subqueries over the runs' (project_id, created_at)
+        index -- one query for the page, not one per project.
+        """
         total = await self._session.scalar(
             select(func.count()).select_from(Project)
         )
-        result = await self._session.scalars(
-            select(Project)
+        run_count = (
+            select(func.count(Run.id))
+            .where(Run.project_id == Project.id)
+            .correlate(Project)
+            .scalar_subquery()
+        )
+        last_run_at = (
+            select(func.max(Run.created_at))
+            .where(Run.project_id == Project.id)
+            .correlate(Project)
+            .scalar_subquery()
+        )
+        result = await self._session.execute(
+            select(Project, run_count.label("run_count"), last_run_at.label("last_run_at"))
             .order_by(Project.created_at.desc(), Project.id)
             .offset(pagination.offset)
             .limit(pagination.limit)
         )
-        return list(result), int(total or 0)
+        return result.all(), int(total or 0)

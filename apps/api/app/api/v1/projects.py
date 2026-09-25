@@ -8,7 +8,7 @@ from fastapi import APIRouter, status
 
 from app.api.dependencies import PaginationDep, ProjectServiceDep
 from app.schemas.common import Page
-from app.schemas.project import ProjectCreate, ProjectResponse
+from app.schemas.project import ProjectCreate, ProjectResponse, ProjectSummary
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -29,16 +29,23 @@ async def create_project(
 
 @router.get(
     "",
-    response_model=Page[ProjectResponse],
+    response_model=Page[ProjectSummary],
     summary="List projects",
 )
 async def list_projects(
     service: ProjectServiceDep, pagination: PaginationDep
-) -> Page[ProjectResponse]:
-    """Return one page of projects, newest first."""
-    projects, total = await service.list(pagination)
-    return Page[ProjectResponse](
-        items=[ProjectResponse.model_validate(p) for p in projects],
+) -> Page[ProjectSummary]:
+    """Return one page of projects, newest first, with run counts."""
+    rows, total = await service.list(pagination)
+    return Page[ProjectSummary](
+        items=[
+            ProjectSummary(
+                **ProjectResponse.model_validate(project).model_dump(),
+                run_count=run_count,
+                last_run_at=last_run_at,
+            )
+            for project, run_count, last_run_at in rows
+        ],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,

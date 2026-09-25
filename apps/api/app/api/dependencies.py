@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db.session import get_session
+from app.services.comparisons import ComparisonService
 from app.services.events import EventService
 from app.services.health import HealthService
 from app.services.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, Pagination
@@ -43,6 +44,11 @@ def get_event_service(session: SessionDep) -> EventService:
     return EventService(session=session)
 
 
+def get_comparison_service(session: SessionDep) -> ComparisonService:
+    """Construct the comparison service for a request."""
+    return ComparisonService(session=session)
+
+
 def get_pagination(
     page: Annotated[int, Query(ge=1, description="1-based page number.")] = 1,
     page_size: Annotated[
@@ -57,4 +63,5 @@ HealthServiceDep = Annotated[HealthService, Depends(get_health_service)]
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
 RunServiceDep = Annotated[RunService, Depends(get_run_service)]
 EventServiceDep = Annotated[EventService, Depends(get_event_service)]
+ComparisonServiceDep = Annotated[ComparisonService, Depends(get_comparison_service)]
 PaginationDep = Annotated[Pagination, Depends(get_pagination)]

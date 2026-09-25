@@ -7,10 +7,12 @@ the SQLAlchemy data model and its Alembic migration, the `/api/v1` REST
 surface for projects, runs and events, a Python SDK that records a run and
 uploads it, replay of a recorded run against a new version of the agent with
 deterministic tool-call matching, a deterministic comparison of a replay
-against its recording (pass/fail with findings), and a minimal Next.js app.
+against its recording (pass/fail with findings), storage of those reports, and
+a read-only Next.js dashboard over projects, runs, traces and reports.
 
 Explicitly **not** built: semantic (LLM-judged) comparison, the LLM matching
-fallback, evaluation, regression suites, a CLI, CI integration, a dashboard, authentication, billing, queues, AWS and Kubernetes.
+fallback, evaluation, regression suites, a CLI, CI integration, authentication,
+billing, queues, AWS and Kubernetes.
 
 ## Repository layout
 
@@ -56,6 +58,8 @@ rather than a `404` that would read as "your URL is wrong".
 
 ```
 Project ──< Run ──< Event
+             │
+             └──? Comparison      (a replay run's report; at most one)
 ```
 
 | Table | Key columns | Notes |
@@ -63,6 +67,7 @@ Project ──< Run ──< Event
 | `projects` | `id`, `name`, `description` | Owns runs |
 | `runs` | `id`, `project_id`, `agent_name`, `agent_version`, `input`, `output`, `metadata`, `status`, `started_at`, `completed_at`, `replay_of_run_id` | Owns events; a replay points at its recording |
 | `events` | `id`, `run_id`, `sequence`, `event_type`, `tool_name`, `arguments`, `response`, `duration_ms` | One step of a run |
+| `comparisons` | `id`, `replay_run_id`, `recording_run_id`, `verdict`, `report`, `created_at` | The SDK's report on one replay |
 
 Relationships navigate both ways: `project.runs`, `run.project`, `run.events`,
 `event.run`. `Run.events` carries `order_by="Event.sequence"`, so an eagerly
@@ -82,6 +87,10 @@ silently blocking.
 | `ix_events_run_id` | Fetch a run's events |
 | `uq_events_run_id_sequence` | **Unique.** Two events cannot claim the same position in a run; the index also serves ordered reads |
 | `ck_runs_status_valid` | `status` must be `running`, `completed` or `failed` |
+| `uq_comparisons_replay_run_id` | **Unique.** One report per replay run; also serves the run list's join |
+| `ix_comparisons_recording_run_id` | Find the reports about a recording |
+| `fk_comparisons_*_runs` | Both runs must exist; `ON DELETE CASCADE` on each |
+| `ck_comparisons_verdict_valid` | `verdict` must be `pass` or `fail` |
 
 There is deliberately no standalone index on `events.sequence`. A sequence
 number is meaningless outside its run, so every real query filters on `run_id`
@@ -103,6 +112,12 @@ not silently delete it, and should not be blocked by it either. The replay
 keeps its trace and loses only the link. Same-project is enforced in
 `RunService.ingest`, not by the schema — a composite foreign key would need a
 redundant unique `(id, project_id)` on `runs` for one check.
+
+`comparisons` cascades from **both** of its runs. A report without either run
+it compares cannot be read meaningfully, and keeping it would leave a verdict
+pointing at nothing. The two rules meet when a recording is deleted: its
+replays survive (`replay_of_run_id` becomes null) but their reports are
+deleted with it, so those replays keep their traces and lose their verdicts.
 
 ## Design decisions
 
@@ -398,9 +413,52 @@ happened to start first.
 
 **Why comparison lives in the SDK.** A CI job needs a verdict locally, from a
 recording it may have fetched moments ago or recorded in the same process,
-without a round trip to a service. Persisting reports belongs with regression
-suites (Phase 7), which is why `to_dict()` already has a fixed shape and key
-order; until then a report is a value the test process holds.
+without a round trip to a service. The API stores reports so they can be looked
+at later, but never computes or changes a verdict.
+
+## Stored reports and the dashboard
+
+`tracer.replay_and_compare` uploads the report next to the replay run it
+describes, when uploading is configured. Three endpoints serve them:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/v1/runs/{run_id}/comparison` | Store the report for a replay run |
+| GET | `/api/v1/runs/{run_id}/comparison` | Get it; `404` for a run with no report |
+| GET | `/api/v1/projects/{project_id}/comparisons` | A project's reports, newest first, counts only |
+
+**A report belongs to a replay of exactly that recording.** The run in the URL
+must have `replay_of_run_id` set, and it must equal the report's
+`recording_run_id`; the recording must also be in the same project. Anything
+else is a `422` on `recording_run_id`. Without this, a plain recording could be
+given a report — even one "about" itself — and would show a PASS/FAIL badge
+for a comparison that never happened. As with ingest, an unknown recording and
+another project's get the same answer.
+
+**Reports are immutable.** `replay_run_id` is unique, and a second report for
+the same run is a `409` rather than a replacement, so a verdict someone has
+already seen cannot quietly change. The SDK counts that `409` as "already
+stored", which makes its upload safe to retry. The report is stored verbatim
+as JSONB — its shape belongs to the SDK — and the API also checks that the
+verdict agrees with the findings it summarises. `verdict` is copied out of the
+report into its own column so run lists can show it with a join instead of
+reading JSON per row.
+
+**List summaries are computed in SQL.** `GET /projects/{id}/runs` returns each
+run with `event_count`, `duration_ms` and `verdict`, and `GET /projects` returns
+each project with `run_count` and `last_run_at`. They come from the query that
+pages the rows — correlated counts over the existing `run_id` / `project_id`
+indexes and an outer join to `comparisons` — so a page costs a fixed number of
+queries however many rows it holds. `duration_ms` is `completed_at -
+started_at`, from the client's clock, and null while a run is running. The runs
+list also takes `?status=`.
+
+**The dashboard is read-only.** It shows projects, runs, a run's timeline and
+its report; it creates, edits and deletes nothing. Every write in AgentTrace
+comes from the SDK, next to the agent, and the recordings are fixtures whose
+value is that nothing changes them after the fact. A dashboard that could edit
+a run or a verdict would be a second, unaudited way to rewrite history, and
+without authentication anyone who can reach it could do so.
 
 ## Known limitations and deliberate trade-offs
 
@@ -470,3 +528,10 @@ cannot be replayed faithfully, and a non-dict input arrives wrapped as
 exception types are rebuilt as themselves; the recording holds no traceback,
 no attributes and no exception chain, so an agent that inspects those sees
 less during replay than it did live.
+
+**Deleting a recording deletes its replays' verdicts.** A replay's link to its
+recording is `SET NULL`, so the replay run and its trace survive, but its
+comparison report cascades from the recording and is deleted. There is no
+delete endpoint yet, so this only happens through the database directly; when
+one exists, a retention policy will have to decide whether a recording that has
+been compared against can be deleted at all.
