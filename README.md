@@ -1,5 +1,7 @@
 # AgentTrace
 
+[![CI](https://github.com/destroxx/agenttrace/actions/workflows/ci.yml/badge.svg)](https://github.com/destroxx/agenttrace/actions/workflows/ci.yml)
+
 Record-and-replay regression testing for AI agents.
 
 ## The problem
@@ -51,7 +53,7 @@ mean the same thing — semantic comparison — is not built yet.
 | ✅ | Compare (deterministic) | Replay → PASS/FAIL with findings; configurable severities and ignored output paths |
 | ⬜ | Semantic comparison | Judge whether a reworded answer means the same thing; reworded text is a warning until then |
 | ✅ | Regression suites | Recordings committed in your repo, a `suite.toml`, and `agenttrace run-suite` — offline, exit 1 on any FAIL |
-| ⬜ | CI integration | Running suites in CI pipelines (Phase 8) |
+| ✅ | CI integration | GitHub Actions runs every check and the regression suite on each push and pull request |
 | ✅ | Dashboard | Read-only: projects, runs with verdicts, a run's timeline and its comparison report |
 | ⬜ | Auth, billing, queues, deployment | Not started; the SDK sends an API key the API does not check |
 
@@ -339,6 +341,41 @@ It prints the `[[cases]]` entry to paste into `suite.toml`, and refuses to
 overwrite an existing recording without `--force`. `python -m agenttrace` works
 too. See [`docs/architecture.md`](docs/architecture.md#regression-suites) for why
 suites live in the repo rather than on the server.
+
+### Run your suite in CI
+
+A suite needs no API, no database and no secrets, so running it in CI is a
+checkout, an install and one command. The SDK is **not on PyPI yet**; install
+it from this repository. Copy this into your repo as
+`.github/workflows/regression-suite.yml`:
+
+```yaml
+name: Regression suite
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt   # your agent's own dependencies
+      - run: pip install "agenttrace @ git+https://github.com/destroxx/agenttrace@main#subdirectory=packages/python-sdk"
+      - run: agenttrace run-suite path/to/suite.toml --agent-version "${{ github.sha }}"
+```
+
+The job fails on exit `1` (a case regressed) and on exit `2` (the suite could
+not run); the log says which. `@main` follows this repo's latest commit — pin
+a commit SHA instead if you want the SDK to change only when you change it.
+Leave `AGENTTRACE_PROJECT_ID` unset: nothing needs uploading for a verdict.
+
+This repository runs the same way on itself — see
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) and
+[`docs/architecture.md`](docs/architecture.md#continuous-integration).
 
 Full SDK documentation, including known limitations, is in
 [`packages/python-sdk/README.md`](packages/python-sdk/README.md).

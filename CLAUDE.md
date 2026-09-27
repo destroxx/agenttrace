@@ -82,6 +82,10 @@ cd apps/api && alembic upgrade head && alembic downgrade base && alembic upgrade
 `pyproject.toml` sets `addopts = "-q"`, so `-o addopts=""` is needed for a
 per-test listing.
 
+`.github/workflows/ci.yml` runs these same commands on every push and pull
+request. A change to one must change the other, or CI and the pre-commit
+check stop meaning the same thing.
+
 ## Workflow
 
 - **One phase at a time.** Do what it asks and stop; never start the next one.
