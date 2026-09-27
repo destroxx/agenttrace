@@ -1,0 +1,21 @@
+# A regression suite for examples/async_support_agent.py.
+#
+#   agenttrace run-suite examples/suites/support/suite.toml     # from the repo root
+#
+# Each case is a recording of a real run, saved with `agenttrace export` (or,
+# for this example, recorded offline). run-suite replays it against the agent
+# code as it is now and compares; exit 0 means every case passed.
+
+name = "support"
+agent = "examples.async_support_agent:run_agent"
+
+# Optional, applies to every case. A case's own [cases.policy] extends it:
+# ignore_paths are combined, and the case wins per severity code.
+#
+# [policy]
+# severity_overrides = { TOOL_ORDER_CHANGED = "info" }
+# ignore_paths = ["generated_at"]
+
+[[cases]]
+name = "two-orders"
+recording = "recordings/two-orders.json"

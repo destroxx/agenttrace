@@ -15,8 +15,9 @@ length 100).
 ## Layout
 
 `apps/api/` FastAPI service · `apps/web/` Next.js app (has its own CLAUDE.md) ·
-`packages/python-sdk/` the SDK, installed into user agent processes ·
-`examples/` runnable examples · `docs/architecture.md` design decisions and
+`packages/python-sdk/` the SDK, installed into user agent processes, and the
+`agenttrace` CLI (`run-suite`, `export`) · `examples/` runnable examples, and
+`examples/suites/support/` the example regression suite · `docs/architecture.md` design decisions and
 trade-offs, keep current.
 
 ## API layering
@@ -56,6 +57,10 @@ schema registry.
   exception is the decorator's recording of a cancelled tool.
 - Plain dataclasses with `slots=True`. Prefer `asyncio.run()` in tests over
   adding pytest-asyncio.
+- **The CLI is test tooling too.** `agenttrace.cli` (`run-suite`, `export`) and
+  `agenttrace.suite` follow the replay rule: they raise `SuiteError` and exit
+  `0` pass / `1` a case failed / `2` the suite could not run. Suites and their
+  recordings live in the user's repo; `argparse` and `tomllib` only.
 
 ## Style
 
@@ -69,6 +74,7 @@ a default anywhere; secrets are `SecretStr` and the DSN is a plain property.
 cd apps/api && RUN_INTEGRATION_TESTS=1 pytest -o addopts=""   # 0 skipped in CI
 cd packages/python-sdk && pytest -o addopts=""
 ruff check apps/api packages/python-sdk examples
+agenttrace run-suite examples/suites/support/suite.toml     # from the repo root; exit 0
 cd apps/web && npm run lint && npm run build && npx tsc --noEmit   # build before tsc
 cd apps/api && alembic upgrade head && alembic downgrade base && alembic upgrade head && alembic check
 ```

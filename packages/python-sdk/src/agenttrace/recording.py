@@ -148,17 +148,28 @@ class Recording:
         other failure. The events endpoint returns a run's whole trace
         unpaginated, so one request per resource is the full recording.
         """
-        config = config or TracerConfig.from_env()
-        run = _get_json(config, RUN_PATH.format(run_id=run_id))
-        events = _get_json(config, EVENTS_PATH.format(run_id=run_id))
-        if not isinstance(run, dict) or not isinstance(events, list):
-            raise AgentTraceAPIError(f"unexpected response shape fetching run {run_id}")
-        return cls.from_payload({**run, "events": events})
+        return cls.from_payload(fetch_payload(run_id, config))
 
     @classmethod
     async def from_api(cls, run_id: str, config: TracerConfig | None = None) -> Recording:
         """`from_api_sync`, off the event loop: urllib blocks for the whole request."""
         return await asyncio.to_thread(cls.from_api_sync, run_id, config)
+
+
+def fetch_payload(run_id: str, config: TracerConfig | None = None) -> dict[str, Any]:
+    """Fetch a stored run as the dict `Recording.from_payload` reads.
+
+    The run with its whole trace under `"events"` -- exactly the API's
+    responses, unreshaped, so `agenttrace export` can write it to a file that
+    reads back into the same `Recording` a direct fetch would build. Raises
+    like `Recording.from_api_sync`.
+    """
+    config = config or TracerConfig.from_env()
+    run = _get_json(config, RUN_PATH.format(run_id=run_id))
+    events = _get_json(config, EVENTS_PATH.format(run_id=run_id))
+    if not isinstance(run, dict) or not isinstance(events, list):
+        raise AgentTraceAPIError(f"unexpected response shape fetching run {run_id}")
+    return {**run, "events": events}
 
 
 def _error_of(event: Mapping[str, Any]) -> dict[str, Any]:

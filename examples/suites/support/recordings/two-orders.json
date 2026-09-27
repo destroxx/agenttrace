@@ -1,0 +1,179 @@
+{
+  "agent_name": "support-agent",
+  "agent_version": "v1.0.0",
+  "completed_at": "2026-09-27T08:06:28.503556+00:00",
+  "events": [
+    {
+      "arguments": null,
+      "call_id": null,
+      "duration_ms": null,
+      "event_type": "agent_start",
+      "response": null,
+      "sequence": 0,
+      "tool_name": null
+    },
+    {
+      "arguments": {
+        "customer_id": "c-42"
+      },
+      "call_id": "d0953a35-1d7e-4405-9411-00686a83f7b3",
+      "duration_ms": null,
+      "event_type": "tool_call",
+      "response": null,
+      "sequence": 1,
+      "tool_name": "get_customer"
+    },
+    {
+      "arguments": null,
+      "call_id": "d0953a35-1d7e-4405-9411-00686a83f7b3",
+      "duration_ms": 50,
+      "event_type": "tool_response",
+      "response": {
+        "id": "c-42",
+        "name": "Dana",
+        "tier": "gold"
+      },
+      "sequence": 2,
+      "tool_name": "get_customer"
+    },
+    {
+      "arguments": {
+        "order_id": "A-1"
+      },
+      "call_id": "724a530d-e3ae-46a5-a98d-c38d8366deb5",
+      "duration_ms": null,
+      "event_type": "tool_call",
+      "response": null,
+      "sequence": 3,
+      "tool_name": "get_order"
+    },
+    {
+      "arguments": {
+        "order_id": "B-2"
+      },
+      "call_id": "a38c4184-d143-4285-9090-81f50b97b7f9",
+      "duration_ms": null,
+      "event_type": "tool_call",
+      "response": null,
+      "sequence": 4,
+      "tool_name": "get_order"
+    },
+    {
+      "arguments": null,
+      "call_id": "724a530d-e3ae-46a5-a98d-c38d8366deb5",
+      "duration_ms": 51,
+      "event_type": "tool_response",
+      "response": {
+        "id": "A-1",
+        "item": "Running shoes",
+        "status": "shipped"
+      },
+      "sequence": 5,
+      "tool_name": "get_order"
+    },
+    {
+      "arguments": null,
+      "call_id": "a38c4184-d143-4285-9090-81f50b97b7f9",
+      "duration_ms": 51,
+      "event_type": "tool_response",
+      "response": {
+        "id": "B-2",
+        "item": "Wool socks",
+        "status": "processing"
+      },
+      "sequence": 6,
+      "tool_name": "get_order"
+    },
+    {
+      "arguments": {
+        "order_id": "A-1"
+      },
+      "call_id": "8e1c89f7-f8a7-466c-8627-627b86db360b",
+      "duration_ms": null,
+      "event_type": "tool_call",
+      "response": null,
+      "sequence": 7,
+      "tool_name": "get_delivery_status"
+    },
+    {
+      "arguments": null,
+      "call_id": "8e1c89f7-f8a7-466c-8627-627b86db360b",
+      "duration_ms": 51,
+      "event_type": "tool_response",
+      "response": "arriving tomorrow",
+      "sequence": 8,
+      "tool_name": "get_delivery_status"
+    },
+    {
+      "arguments": {
+        "order_id": "B-2"
+      },
+      "call_id": "b56d8ad6-9259-4a02-8221-5c00350eba8f",
+      "duration_ms": null,
+      "event_type": "tool_call",
+      "response": null,
+      "sequence": 9,
+      "tool_name": "get_delivery_status"
+    },
+    {
+      "arguments": null,
+      "call_id": "b56d8ad6-9259-4a02-8221-5c00350eba8f",
+      "duration_ms": 51,
+      "event_type": "tool_response",
+      "response": "not yet dispatched",
+      "sequence": 10,
+      "tool_name": "get_delivery_status"
+    },
+    {
+      "arguments": {
+        "customer_name": "Dana",
+        "lines": [
+          "Running shoes (A-1): arriving tomorrow",
+          "Wool socks (B-2): not yet dispatched"
+        ]
+      },
+      "call_id": "0b41a33c-1ab1-4639-b920-a6703b012e06",
+      "duration_ms": null,
+      "event_type": "tool_call",
+      "response": null,
+      "sequence": 11,
+      "tool_name": "format_reply"
+    },
+    {
+      "arguments": null,
+      "call_id": "0b41a33c-1ab1-4639-b920-a6703b012e06",
+      "duration_ms": 0,
+      "event_type": "tool_response",
+      "response": "Hi Dana,\n  - Running shoes (A-1): arriving tomorrow\n  - Wool socks (B-2): not yet dispatched\n— Support",
+      "sequence": 12,
+      "tool_name": "format_reply"
+    },
+    {
+      "arguments": null,
+      "call_id": null,
+      "duration_ms": null,
+      "event_type": "agent_end",
+      "response": null,
+      "sequence": 13,
+      "tool_name": null
+    }
+  ],
+  "id": "dfed6053-138b-4ce3-866d-cd59bab0afef",
+  "input": {
+    "customer_id": "c-42",
+    "message": "Where are my two orders?",
+    "order_ids": [
+      "A-1",
+      "B-2"
+    ]
+  },
+  "metadata": {
+    "environment": "example"
+  },
+  "output": {
+    "message": "Hi Dana,\n  - Running shoes (A-1): arriving tomorrow\n  - Wool socks (B-2): not yet dispatched\n— Support"
+  },
+  "replay_of_run_id": null,
+  "started_at": "2026-09-27T08:06:28.298783+00:00",
+  "status": "completed"
+}

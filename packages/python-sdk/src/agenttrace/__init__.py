@@ -11,7 +11,9 @@ Tool results and exceptions pass through untouched, and any failure to record
 or upload is logged to the ``agenttrace`` logger and swallowed. Replay is test
 tooling invoked on purpose, so it raises the exceptions in ``agenttrace.errors``
 instead. `compare` (or `tracer.replay_and_compare`) turns a replay into a
-deterministic PASS/FAIL report with the findings behind it.
+deterministic PASS/FAIL report with the findings behind it. A regression suite
+-- a TOML file of recorded cases in the developer's repo -- is run with
+``agenttrace run-suite``; see ``agenttrace.suite`` and ``agenttrace.cli``.
 """
 
 from agenttrace.comparison import ComparisonPolicy, ComparisonReport, Finding, compare
@@ -21,11 +23,13 @@ from agenttrace.errors import (
     RecordingNotFound,
     ReplayedToolError,
     ReplayError,
+    SuiteError,
     UnmatchedToolCall,
 )
 from agenttrace.models import RecordedEvent, ToolCall, Trace
 from agenttrace.recording import RecordedToolCall, Recording
 from agenttrace.replay import ReplayResult, ReplaySummary, ToolCallMatch, UnusedRecordedCall
+from agenttrace.suite import Suite, SuiteCase, load_suite
 from agenttrace.tracer import AgentTracer
 
 __version__ = "0.1.0"
@@ -44,6 +48,9 @@ __all__ = [
     "ReplayResult",
     "ReplaySummary",
     "ReplayedToolError",
+    "Suite",
+    "SuiteCase",
+    "SuiteError",
     "ToolCall",
     "ToolCallMatch",
     "Trace",
@@ -52,4 +59,5 @@ __all__ = [
     "UnusedRecordedCall",
     "__version__",
     "compare",
+    "load_suite",
 ]

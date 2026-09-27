@@ -50,7 +50,8 @@ mean the same thing — semantic comparison — is not built yet.
 | ✅ | Replay | Re-run an agent's own entry point with recorded tool results served back; exact → normalized matching |
 | ✅ | Compare (deterministic) | Replay → PASS/FAIL with findings; configurable severities and ignored output paths |
 | ⬜ | Semantic comparison | Judge whether a reworded answer means the same thing; reworded text is a warning until then |
-| ⬜ | Regression suites & CI | Run suites of recordings in CI |
+| ✅ | Regression suites | Recordings committed in your repo, a `suite.toml`, and `agenttrace run-suite` — offline, exit 1 on any FAIL |
+| ⬜ | CI integration | Running suites in CI pipelines (Phase 8) |
 | ✅ | Dashboard | Read-only: projects, runs with verdicts, a run's timeline and its comparison report |
 | ⬜ | Auth, billing, queues, deployment | Not started; the SDK sends an API key the API does not check |
 
@@ -190,8 +191,9 @@ npm install
 npm run dev
 ```
 
-A read-only dashboard: projects, their runs with PASS/FAIL verdicts, each run's
-timeline, and its comparison report. It changes nothing.
+<http://localhost:3000> is the product site; the read-only dashboard is at
+<http://localhost:3000/projects>: projects, their runs with PASS/FAIL verdicts,
+each run's timeline, and its comparison report. It changes nothing.
 
 ---
 
@@ -309,6 +311,36 @@ replay result, and `report.to_dict()` is a stable, JSON-serialisable form.
 **Uploading is opt-in**: without `AGENTTRACE_PROJECT_ID` the SDK keeps traces in
 memory and never opens a socket, so it is safe to import in tests and offline.
 
+### Run a regression suite
+
+A suite lives in your repo: a `suite.toml` naming the agent's entry point and
+a list of cases, each a recording saved as JSON. It runs fully offline.
+
+```bash
+agenttrace run-suite examples/suites/support/suite.toml; echo "exit=$?"
+```
+
+```
+PASS  two-orders
+suite support: 1 passed, 0 failed
+exit=0
+```
+
+Exit `0` means every case passed, `1` that at least one FAILed (each failure's
+errors are listed under it), and `2` that the suite itself could not run. A case
+the tool could not replay prints `ERROR` and also makes the exit code `2`.
+Add a case by exporting a stored run — review it for secrets and personal data
+before committing it:
+
+```bash
+agenttrace export $RUN_ID -o examples/suites/support/recordings/refund.json
+```
+
+It prints the `[[cases]]` entry to paste into `suite.toml`, and refuses to
+overwrite an existing recording without `--force`. `python -m agenttrace` works
+too. See [`docs/architecture.md`](docs/architecture.md#regression-suites) for why
+suites live in the repo rather than on the server.
+
 Full SDK documentation, including known limitations, is in
 [`packages/python-sdk/README.md`](packages/python-sdk/README.md).
 
@@ -415,7 +447,7 @@ ruff check apps/api packages/python-sdk examples
 cd apps/web && npm run lint && npm run build && npx tsc --noEmit
 ```
 
-Currently 103 API tests and 137 SDK tests. The API suite owns a separate database
+Currently 103 API tests and 180 SDK tests. The API suite owns a separate database
 and rolls back every test, so running it never touches development data.
 
 Migrations are reversible; the round trip is worth checking after a schema

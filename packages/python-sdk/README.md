@@ -218,6 +218,74 @@ policy = ComparisonPolicy(
   (`items.*.id`); list indexes are numbers in a path (`items.0.id`). A dict key
   containing a dot cannot be addressed.
 
+## Regression suites
+
+A suite lives in **your** repository, next to the agent: a TOML file listing
+cases, each a recording saved as JSON. `agenttrace run-suite` replays every
+case against the agent code as it is now and compares — offline, with no API,
+so CI gives the same verdict for the same commit.
+
+```toml
+name = "support"
+agent = "examples.async_support_agent:run_agent"   # module:function
+
+[policy]                                  # optional, every case
+severity_overrides = { TOOL_ORDER_CHANGED = "info" }
+ignore_paths = ["generated_at"]
+
+[[cases]]
+name = "two-orders"
+recording = "recordings/two-orders.json"  # relative to suite.toml
+[cases.policy]                            # optional, extends the suite's
+ignore_paths = ["reply.id"]
+```
+
+A case's policy extends the suite's: `ignore_paths` are combined, and the case
+wins per code in `severity_overrides`. Everything — the TOML, every recording,
+every policy — is validated before any case runs; a problem is one
+`SuiteError` naming the file and case.
+
+```bash
+agenttrace run-suite PATH [--agent-version LABEL]
+agenttrace export RUN_ID -o PATH [--force]
+```
+
+```
+PASS  two-orders
+FAIL  refund-flow  1 error, 1 warning
+      MISSING_TOOL_CALL  get_order(order_id="A-2") was recorded (seq 5) but never called
+suite support: 1 passed, 1 failed
+```
+
+| Exit | Meaning |
+| --- | --- |
+| `0` | Every case passed |
+| `1` | At least one case failed — the agent regressed |
+| `2` | The suite could not run: a `SuiteError`, an agent that will not import, bad arguments, or a failed export |
+
+A FAIL lists its error findings; warnings are only counted. 1 and 2 differ so
+CI can tell a regression from a broken suite. An agent that
+raises during a case FAILs that case (`AGENT_ERROR`); the rest still run. A
+case the tool itself could not replay prints `ERROR` and makes the exit code
+`2`, even if other cases FAILed.
+
+`run-suite` imports the agent with the working directory first on `sys.path`,
+so run it from the directory the `module:function` path is relative to —
+usually the repo root. `--agent-version` labels the replay runs, e.g. with a
+git SHA. Uploading works as everywhere else: off unless `AGENTTRACE_PROJECT_ID`
+is set, and a failed upload never changes a verdict. A recording that is not a
+run in that project — one made offline, or exported from another project — is
+refused by the API, so leave the project id unset for such suites.
+
+`export` fetches a stored run and its events and writes them as a recording,
+with sorted keys and a fixed indent so the file diffs cleanly. It refuses to
+overwrite an existing file without `--force` — a recording is a frozen
+fixture — and refuses a run that is still running. It prints the `[[cases]]`
+entry to paste into `suite.toml`. `python -m agenttrace` is the same command.
+
+**Recordings are committed verbatim.** They hold real inputs, outputs and tool
+responses. Review each one for secrets and personal data before committing it.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -300,5 +368,6 @@ logging.getLogger("agenttrace").setLevel(logging.DEBUG)
 
 ## Scope
 
-Recording, upload, replay and deterministic comparison are implemented.
-Semantic comparison, regression suites and evaluation are later milestones.
+Recording, upload, replay, deterministic comparison and regression suites are
+implemented. Semantic comparison, CI integration and evaluation are later
+milestones.

@@ -71,3 +71,20 @@ class ReplayedToolError(Exception):
         super().__init__(f"{error_type}: {message}")
         self.error_type = error_type
         self.message = message
+
+
+class SuiteError(Exception):
+    """A regression suite cannot be run as written.
+
+    Raised while loading, before any case runs: a suite that is half valid
+    would report a verdict for the cases that happened to load, and CI would
+    read that as the agent's result rather than the suite's. `path` is the file
+    at fault -- the suite, or one of its recordings -- and `case` the case
+    name when there is one, so the message points at the line to fix.
+    """
+
+    def __init__(self, message: str, *, path: str, case: str | None = None) -> None:
+        where = f"{path}: case {case!r}" if case is not None else path
+        super().__init__(f"{where}: {message}")
+        self.path = path
+        self.case = case

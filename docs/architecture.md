@@ -7,12 +7,13 @@ the SQLAlchemy data model and its Alembic migration, the `/api/v1` REST
 surface for projects, runs and events, a Python SDK that records a run and
 uploads it, replay of a recorded run against a new version of the agent with
 deterministic tool-call matching, a deterministic comparison of a replay
-against its recording (pass/fail with findings), storage of those reports, and
-a read-only Next.js dashboard over projects, runs, traces and reports.
+against its recording (pass/fail with findings), storage of those reports, a
+read-only Next.js dashboard over projects, runs, traces and reports, and
+regression suites kept in the developer's repo, run by the `agenttrace` CLI.
 
 Explicitly **not** built: semantic (LLM-judged) comparison, the LLM matching
-fallback, evaluation, regression suites, a CLI, CI integration, authentication,
-billing, queues, AWS and Kubernetes.
+fallback, evaluation, CI integration, authentication, billing, queues, AWS and
+Kubernetes.
 
 ## Repository layout
 
@@ -460,6 +461,77 @@ value is that nothing changes them after the fact. A dashboard that could edit
 a run or a verdict would be a second, unaudited way to rewrite history, and
 without authentication anyone who can reach it could do so.
 
+## Regression suites
+
+A suite is a TOML file in the developer's own repository listing cases, each a
+recording saved as a JSON file beside it. `agenttrace run-suite suite.toml`
+replays every case against the agent code as it is now, compares, prints one
+line per case and a summary, and exits non-zero on any FAIL. It needs no API
+and no database.
+
+```
+suites/support/
+├── suite.toml                 name, agent = "module:function", [policy], [[cases]]
+└── recordings/
+    └── two-orders.json        one recording: the run plus its events
+```
+
+**Suites live in the repo, not on the server.** This was decided up front,
+for three reasons. CI must give the same verdict for the same commit, and a
+suite fetched from a service could change underneath a commit that did not.
+A policy change — a severity raised, an output path ignored — changes what
+counts as a regression, so it should go through code review like any other
+test change. And there is no deployed API or authentication for CI to reach.
+Server-side datasets would suit a hosted, multi-user product; if they come,
+they will sync into the repo rather than replace it.
+
+**The recording file is the export of a stored run.** `agenttrace export
+RUN_ID -o PATH` writes `{**run, "events": [...]}` — exactly the API's two
+responses, the shape `Recording.from_api_sync` builds — so the file reads back
+through `Recording.from_payload` into the same `Recording` a direct fetch
+would. There is no second format. The file is written with sorted keys, a
+two-space indent, unescaped non-ASCII and a trailing newline, so re-exporting
+the same run is a zero-line diff and a real change is a readable one.
+
+**Export refuses to overwrite.** A recording is a frozen fixture: it is what
+every future replay is judged against. Silently replacing one would change what
+a test asserts without anyone seeing it happen, so an existing file is only
+replaced with `--force`, and a run still `running` is refused because it is
+not a complete recording.
+
+**Everything is validated before anything runs.** Parse errors, missing or
+unknown keys, duplicate case names, a missing or malformed recording and an
+invalid policy are all one `SuiteError` naming the file and case, raised while
+loading. A suite that ran the cases it could load would report a verdict on
+part of itself, and a CI log would read that as the agent's result. An empty
+suite is an error too: it would pass without testing anything.
+
+**Policy merging.** A suite-wide `[policy]` applies to every case, and a case's
+`[cases.policy]` extends it: `ignore_paths` are the union, and
+`severity_overrides` are merged with the case winning per code. A case can be
+stricter or looser about a code, but cannot un-ignore a path the suite ignores.
+
+**Exit codes: 0 all passed, 1 any case failed, 2 the suite could not run.**
+2 covers a `SuiteError`, an agent that will not import, bad arguments and a
+failed export. CI must tell "the agent regressed" apart from "the suite is
+broken": the first is for the author of the change, the second for whoever
+owns the suite, and conflating them sends the wrong person looking. An agent
+that raises during a case is a regression, not a broken suite — its case FAILs
+with `AGENT_ERROR` and the remaining cases still run. A case the tool itself
+could not replay prints `ERROR` and makes the exit code 2, even beside FAILs,
+because a suite with a broken case cannot vouch for its verdict.
+
+**One tracer, any agent.** The CLI builds one `AgentTracer` from the
+environment and replays each case through it, while the agent module keeps its
+own tracer. This works because the replay session is a module-level
+`ContextVar`: every `@tracer.tool`, whichever tracer decorated it, is answered
+from the recording. Uploading is unchanged — off unless `AGENTTRACE_PROJECT_ID`
+is set. When it is on, the agent's own tracer uploads the replay run and the
+CLI's tracer uploads the report; a failed upload is logged and never changes a
+verdict. The agent is imported by `module:function` with the working directory
+first on `sys.path`, as uvicorn and pytest do, so a suite run from the repo root
+can name the agent without it being installed as a package.
+
 ## Known limitations and deliberate trade-offs
 
 Every item here is a choice made with its cost understood, not an oversight.
@@ -535,3 +607,19 @@ comparison report cascades from the recording and is deleted. There is no
 delete endpoint yet, so this only happens through the database directly; when
 one exists, a retention policy will have to decide whether a recording that has
 been compared against can be deleted at all.
+
+**Recordings are committed verbatim.** A recording holds the run's real input,
+output and every tool argument and response — customer names, order details,
+anything a tool returned. `export` does not redact, because a fixture that has
+been edited no longer records what happened. Review a recording for secrets and
+personal data before committing it, and record suites against test accounts
+where possible.
+
+**Uploads from a suite fail when the recording is not in the uploading
+project.** With `AGENTTRACE_PROJECT_ID` set, a suite's replay runs are uploaded
+with `replay_of_run_id` pointing at the recording, and the API accepts that
+only for a run stored in the same project. A recording made offline — like the
+example suite's — or exported from another project is refused with a `422`, and
+its report then fails with a `404`, because the replay run it belongs to was
+never stored. Both failures are logged and neither changes the verdict; run
+suites without a project id unless the recordings came from that project.
