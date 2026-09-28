@@ -2,6 +2,8 @@ import Link from "next/link";
 
 import { MobileNav } from "@/components/site/mobile-nav";
 
+const REPO_URL = "https://github.com/destroxx/agenttrace";
+
 const NAV = [
   { href: "/#how", label: "how it works" },
   { href: "/#regressions", label: "regressions" },
@@ -59,6 +61,12 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
                 {item.label}
               </Link>
             ))}
+            <a
+              href={REPO_URL}
+              className="text-muted-foreground transition-colors duration-200 hover:text-foreground"
+            >
+              github
+            </a>
             <Link
               href="/projects"
               className="ml-3 inline-flex h-10 items-center rounded-md border border-line-strong px-4 text-foreground transition-colors duration-200 hover:border-signal hover:text-signal"
@@ -67,7 +75,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             </Link>
           </nav>
           <div className="lg:hidden">
-            <MobileNav items={[...NAV, { href: "/projects", label: "dashboard" }]} />
+            <MobileNav items={[...NAV, { href: REPO_URL, label: "github" }, { href: "/projects", label: "dashboard" }]} />
           </div>
         </div>
       </header>
@@ -96,6 +104,7 @@ function SiteFooter() {
         { href: "/#sdk", label: "python sdk" },
         { href: "/#faq", label: "faq" },
         { href: "/projects", label: "dashboard" },
+        { href: REPO_URL, label: "github" },
       ],
     },
   ];
@@ -124,9 +133,18 @@ function SiteFooter() {
         ))}
       </div>
       <div className="border-t">
-        <p className="mx-auto w-full max-w-7xl px-5 py-5 text-[11px] tracking-[0.18em] text-muted-foreground uppercase sm:px-8">
-          agenttrace · your recordings never leave your infrastructure
-        </p>
+        <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+          <p className="text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
+            agenttrace · your recordings never leave your infrastructure
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Built with{" "}
+            <span role="img" aria-label="love">
+              ❤️
+            </span>{" "}
+            by <span className="text-foreground">Tanmay Singh</span>
+          </p>
+        </div>
       </div>
     </footer>
   );

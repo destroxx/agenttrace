@@ -30,7 +30,7 @@ const QUESTIONS: { q: string; a: string }[] = [
   },
   {
     q: "What is not built yet?",
-    a: "Semantic comparison, which would judge whether two differently worded answers mean the same thing. First-class CI integration, although run-suite already exits 1 on any failure. And auth: the SDK sends an API key that the API does not check yet, so run the API on a trusted network for now.",
+    a: "Semantic comparison, which would judge whether two differently worded answers mean the same thing. And auth and deployment: the SDK sends an API key that the API does not check yet, so run the API on a trusted network.",
   },
 ];
 

@@ -315,7 +315,7 @@ function Ci() {
       index={6}
       label="regression suites"
       title="Recordings live in your repo. The exit code is the gate."
-      lead="Export a stored run to JSON, review it for secrets, and commit it next to a suite.toml. run-suite replays every case offline, with no API, no network and no real tools."
+      lead="Export a stored run to JSON, review it for secrets, and commit it next to a suite.toml. run-suite replays every case offline, with no API, no network and no real tools. This repo's own GitHub Actions workflow runs run-suite on every pull request, so a regression turns the PR red."
       band
     >
       <div className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
@@ -358,23 +358,59 @@ function Ci() {
   );
 }
 
+const REPO_URL = "https://github.com/destroxx/agenttrace";
+
 function Quickstart() {
+  // Each line is a command, or a note (starting with "#") shown as a comment.
+  // Mirrors README.md's Quickstart, shortened; the README stays the source.
   const steps = [
-    { title: "Start Postgres", cmd: "cp .env.example .env && docker compose up -d" },
     {
-      title: "Install and migrate",
-      cmd: 'pip install -e "apps/api[dev]" -e "packages/python-sdk[dev]"\ncd apps/api && alembic upgrade head',
+      title: "Start Postgres",
+      lines: [
+        "cp .env.example .env",
+        "# set POSTGRES_PASSWORD in .env, e.g. openssl rand -hex 16",
+        "docker compose up -d",
+        "# wait until docker compose ps shows (healthy)",
+      ],
     },
-    { title: "Run the API", cmd: "uvicorn app.main:app --reload" },
-    { title: "Record, then replay", cmd: "python examples/async_support_agent.py\npython examples/replay_demo.py" },
+    {
+      title: "Configure, migrate and run the API",
+      lines: [
+        "cp apps/api/.env.example apps/api/.env",
+        "# set the same POSTGRES_PASSWORD in apps/api/.env",
+        "python3.12 -m venv .venv && source .venv/bin/activate",
+        'pip install -e "apps/api[dev]" -e "packages/python-sdk[dev]"',
+        "cd apps/api && alembic upgrade head && uvicorn app.main:app --reload",
+      ],
+    },
+    {
+      title: "Create a project, then record and replay",
+      lines: [
+        "# in a second shell, from the repo root",
+        "source .venv/bin/activate",
+        "export AGENTTRACE_PROJECT_ID=$(curl -s -X POST localhost:8000/api/v1/projects \\",
+        "  -H 'content-type: application/json' -d '{\"name\":\"Demo\"}' \\",
+        "  | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"id\"])')",
+        "python examples/async_support_agent.py",
+        "python examples/replay_demo.py",
+      ],
+    },
+    {
+      title: "Open the dashboard",
+      lines: [
+        "cd apps/web && cp .env.example .env.local",
+        "npm install && npm run dev",
+        "# then open http://localhost:3000/projects",
+      ],
+    },
   ];
   return (
     <Section
       id="quickstart"
       index={7}
       label="quickstart"
-      title="Your first recording in about five minutes."
-      lead="You need Python 3.12+, Node 20+ and Docker. The demo agent is scripted, so there is no LLM and no API key, and it fills a project with a recording, its replays and their reports."
+      title="Your first recording, replayed and judged."
+      lead="You need Python 3.12+, Node 20+ and Docker. The demo agent is scripted, so there is no LLM and no API key. With AGENTTRACE_PROJECT_ID set, the two examples fill that project with a recording, its replays and their comparison reports."
     >
       <ol className="grid gap-5 md:grid-cols-2">
         {steps.map((step, index) => (
@@ -384,12 +420,33 @@ function Quickstart() {
               <span className="text-sm">{step.title}</span>
             </p>
             <pre className="overflow-x-auto rounded-md border bg-code p-4 text-xs leading-6">
-              <C>$ </C>
-              {step.cmd.replace(/\n/g, "\n$ ")}
+              {step.lines.map((line) =>
+                line.startsWith("#") ? (
+                  <C key={line}>
+                    {line}
+                    {"\n"}
+                  </C>
+                ) : (
+                  <span key={line}>
+                    {line.startsWith("  ") ? null : <C>$ </C>}
+                    {line}
+                    {"\n"}
+                  </span>
+                ),
+              )}
             </pre>
           </li>
         ))}
       </ol>
+      <p className="text-sm text-muted-foreground">
+        <a
+          href={`${REPO_URL}#quickstart`}
+          className="text-foreground underline decoration-signal underline-offset-4 hover:text-signal"
+        >
+          Full setup in the README
+        </a>
+        , including troubleshooting and a DATABASE_URL alternative.
+      </p>
     </Section>
   );
 }
