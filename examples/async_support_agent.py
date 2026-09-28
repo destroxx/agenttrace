@@ -76,7 +76,7 @@ async def handle_request(customer_id: str, order_ids: list[str]) -> str:
 
     # Two tools in flight at once: the whole point of recording a `call_id` is
     # that the responses can still be paired back to their calls afterwards.
-    orders = await asyncio.gather(*(get_order(order_id) for order_id in order_ids))
+    orders = await asyncio.gather(*(get_order(order_id) for order_id in order_ids[:1]))
 
     lines = []
     for order in orders:
