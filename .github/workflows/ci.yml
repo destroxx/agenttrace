@@ -31,7 +31,7 @@ concurrency:
 jobs:
   sdk:
     name: SDK (Python ${{ matrix.python }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       # One version failing should not hide whether the other passes.
@@ -56,7 +56,7 @@ jobs:
 
   api:
     name: API
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:
@@ -115,7 +115,7 @@ jobs:
 
   web:
     name: Web
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       NEXT_TELEMETRY_DISABLED: "1"
@@ -143,7 +143,7 @@ jobs:
 
   regression-suite:
     name: Regression suite
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # AGENTTRACE_PROJECT_ID is deliberately unset: nothing uploads, which is
     # what proves the suite needs no API.
