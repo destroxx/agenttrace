@@ -5,10 +5,10 @@ import { NAV_ITEMS } from "@/components/site/sections";
 
 const REPO_URL = "https://github.com/destroxx/agenttrace";
 
-// Footer credit. Fill in the two placeholders below.
-const BUILT_BY = "<NAME>";
+// Footer credit.
+const BUILT_BY = "Tanmay Singh";
 const AUTHOR_GITHUB_URL = "https://github.com/destroxx";
-const AUTHOR_LINKEDIN_URL = "<LINKEDIN URL>";
+const AUTHOR_LINKEDIN_URL = "https://www.linkedin.com/in/tanmay-singh-6438a1201/";
 
 
 function Wordmark() {
@@ -140,15 +140,19 @@ function SiteFooter() {
             agenttrace · your recordings never leave your infrastructure
           </p>
           <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>
-              Built by <span className="text-foreground">{BUILT_BY}</span>
-            </span>
             <a href={AUTHOR_GITHUB_URL} className="underline decoration-line-strong underline-offset-4 hover:text-signal">
               GitHub
             </a>
             <a href={AUTHOR_LINKEDIN_URL} className="underline decoration-line-strong underline-offset-4 hover:text-signal">
               LinkedIn
             </a>
+            <span>
+              Built with{" "}
+              <span role="img" aria-label="love">
+                ❤️
+              </span>{" "}
+              by <span className="text-foreground">{BUILT_BY}</span>
+            </span>
           </p>
         </div>
       </div>
