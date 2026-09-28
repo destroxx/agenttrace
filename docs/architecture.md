@@ -9,11 +9,12 @@ uploads it, replay of a recorded run against a new version of the agent with
 deterministic tool-call matching, a deterministic comparison of a replay
 against its recording (pass/fail with findings), storage of those reports, a
 read-only Next.js dashboard over projects, runs, traces and reports, and
-regression suites kept in the developer's repo, run by the `agenttrace` CLI.
+regression suites kept in the developer's repo, run by the `agenttrace` CLI,
+and a GitHub Actions workflow that runs every check and the suite.
 
 Explicitly **not** built: semantic (LLM-judged) comparison, the LLM matching
-fallback, evaluation, CI integration, authentication, billing, queues, AWS and
-Kubernetes.
+fallback, evaluation, a PyPI release, authentication, billing, queues,
+deployment, AWS and Kubernetes.
 
 ## Repository layout
 
@@ -531,6 +532,54 @@ CLI's tracer uploads the report; a failed upload is logged and never changes a
 verdict. The agent is imported by `module:function` with the working directory
 first on `sys.path`, as uvicorn and pytest do, so a suite run from the repo root
 can name the agent without it being installed as a package.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main`, every pull request and
+on demand. It runs the checks from CLAUDE.md's command list, so CI and a
+developer's pre-commit run are the same checks and cannot drift apart
+unnoticed. There are four jobs, and each protects something different:
+
+| Job | Runs | Protects |
+| --- | --- | --- |
+| SDK (Python 3.12, 3.13) | `pytest`, `ruff check packages/python-sdk examples` | The SDK in users' processes, and the examples |
+| API | `ruff`, the Alembic round trip to base and back, `alembic check`, `pytest` against a Postgres 16 service | The schema — reversible migrations that match the models — and the API |
+| Web | `npm ci`, lint, `next build`, `tsc --noEmit` | The dashboard builds and type-checks |
+| Regression suite | `replay_demo.py` with its verdict line pinned, then `agenttrace run-suite` | That the example agent does not regress, and that a suite runs with no API |
+
+**No secrets, and no API.** Suites are offline by design (see Regression
+suites), so the regression job installs only the SDK and leaves
+`AGENTTRACE_PROJECT_ID` unset: it proves the suite needs nothing but the
+repository. The API job's database is a service container that exists for the
+length of the job, and its password is a literal in the workflow for that
+reason. Workflow permissions are `contents: read` and nothing else: no job
+writes to the repository, so no job gets a token that could.
+
+**`RUN_INTEGRATION_TESTS=1`.** Without it, the API tests skip when Postgres is
+unreachable — right for a laptop without Docker, wrong for CI, where a
+misconfigured service would turn the job green having tested nothing. With it,
+an unreachable database fails the job.
+
+**Two Python versions for the SDK.** `requires-python = ">=3.12"` is a claim to
+every user on 3.12 and newer, and the SDK runs inside their process, on their
+interpreter. The API and the suite run on one version because we choose where
+they run.
+
+**Exit codes.** `run-suite` exits `1` when a case regressed and `2` when the
+suite could not run. Both fail the job, but the step says which in an error
+annotation, and the suite's output is written to the run's summary page either
+way — a red run caused by a broken suite file should not send the author of
+the change looking for a regression in their agent.
+
+**Every step runs with `shell: bash`, so pipefail is on.** A step without an
+explicit shell runs as `bash -e`, without pipefail, and a pipeline then
+succeeds or fails with its last command: `agenttrace run-suite … | tee` would
+report `tee`'s success and turn a regression green. `shell: bash` runs steps
+as `bash -eo pipefail`, so a failure anywhere in a pipe fails the step. It is
+set for the whole workflow and again in each job that has its own defaults.
+
+Pull-request runs are cancelled when a newer commit is pushed to the same pull
+request; runs on `main` always finish, so every commit on `main` has a result.
 
 ## Known limitations and deliberate trade-offs
 

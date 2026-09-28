@@ -283,6 +283,10 @@ overwrite an existing file without `--force` — a recording is a frozen
 fixture — and refuses a run that is still running. It prints the `[[cases]]`
 entry to paste into `suite.toml`. `python -m agenttrace` is the same command.
 
+To run a suite on every push and pull request, copy the minimal GitHub Actions
+workflow in the main README's
+[Run your suite in CI](../../README.md#run-your-suite-in-ci) section.
+
 **Recordings are committed verbatim.** They hold real inputs, outputs and tool
 responses. Review each one for secrets and personal data before committing it.
 
@@ -369,5 +373,5 @@ logging.getLogger("agenttrace").setLevel(logging.DEBUG)
 ## Scope
 
 Recording, upload, replay, deterministic comparison and regression suites are
-implemented. Semantic comparison, CI integration and evaluation are later
-milestones.
+implemented, and suites run in CI. Semantic comparison and evaluation are later
+milestones. The SDK is not on PyPI yet.
