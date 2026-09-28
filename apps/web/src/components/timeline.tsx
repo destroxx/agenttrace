@@ -38,9 +38,9 @@ export function RunTimeline({ events }: { events: RunEvent[] }) {
           : " · no parallel calls"}
         . Positions are event sequence numbers.
       </p>
-      <div className="overflow-x-auto rounded-lg border">
+      <div className="overflow-x-auto rounded-xl border bg-card">
         <div className="min-w-[40rem]">
-          <div className={`${GRID} bg-muted/50 px-4 py-2 text-xs font-medium text-muted-foreground`}>
+          <div className={`${GRID} bg-muted/50 px-4 py-2 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase`}>
             <span>Seq</span>
             <span>Step</span>
             <span className="text-right">Duration</span>
@@ -66,7 +66,7 @@ function ToolRow({ step, timeline }: { step: ToolStep; timeline: Timeline }) {
       <summary className={`${GRID} cursor-pointer list-none px-4 py-2 text-sm hover:bg-muted/30 [&::-webkit-details-marker]:hidden`}>
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {step.start}
-          {step.end !== null ? `→${step.end}` : "→?"}
+          {step.end !== null ? `-${step.end}` : "-?"}
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-2">
           <Chevron />
@@ -79,7 +79,7 @@ function ToolRow({ step, timeline }: { step: ToolStep; timeline: Timeline }) {
                 .map((other) => `${other.toolName} (seq ${other.start})`)
                 .join(", ")}`}
             >
-              ∥ parallel with{" "}
+              parallel with{" "}
               {step.concurrentWith.map((other) => `${other.toolName} #${other.start}`).join(", ")}
             </Badge>
           ) : null}

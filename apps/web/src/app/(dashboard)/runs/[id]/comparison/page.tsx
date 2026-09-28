@@ -27,7 +27,7 @@ export default async function ComparisonPage({
   }
   const project = await getProject(run.data.project_id);
   const crumbs: Crumb[] = [
-    { label: "Projects", href: "/" },
+    { label: "Projects", href: "/projects" },
     {
       label: project.ok ? project.data.name : "Project",
       href: `/projects/${run.data.project_id}`,
@@ -86,7 +86,7 @@ function Report({ comparison }: { comparison: Comparison }) {
       <section
         className={`flex flex-col gap-2 rounded-lg border p-5 ${
           passed
-            ? "border-emerald-500/40 bg-emerald-500/10"
+            ? "border-pass/40 bg-pass/10"
             : "border-destructive/40 bg-destructive/10"
         }`}
       >

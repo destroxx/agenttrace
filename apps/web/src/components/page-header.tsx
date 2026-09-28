@@ -19,7 +19,7 @@ export function PageHeader({
   return (
     <header className="flex flex-col gap-2">
       {crumbs.length > 0 ? (
-        <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
+        <nav aria-label="Breadcrumb" className="font-mono text-xs text-muted-foreground">
           {crumbs.map((crumb, index) => (
             <span key={`${crumb.label}-${index}`}>
               {index > 0 ? <span className="mx-1.5">/</span> : null}
@@ -35,7 +35,7 @@ export function PageHeader({
         </nav>
       ) : null}
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">{title}</h1>
         {children}
       </div>
     </header>

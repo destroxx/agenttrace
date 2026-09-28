@@ -193,8 +193,9 @@ npm install
 npm run dev
 ```
 
-A read-only dashboard: projects, their runs with PASS/FAIL verdicts, each run's
-timeline, and its comparison report. It changes nothing.
+<http://localhost:3000> is the product site. The read-only dashboard is at
+<http://localhost:3000/projects>: projects, their runs with PASS/FAIL verdicts,
+each run's timeline, and its comparison report. It changes nothing.
 
 ---
 

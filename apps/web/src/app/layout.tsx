@@ -1,56 +1,50 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import Link from "next/link";
-import { Suspense } from "react";
+import { Doto, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 
-import {
-  HealthIndicator,
-  HealthIndicatorFallback,
-} from "@/components/health-indicator";
+import { siteUrl } from "@/lib/config";
 
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const plexSans = IBM_Plex_Sans({
+  variable: "--font-plex-sans",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// Dot-matrix display face for the marketing site's headlines: a tape
+// counter's readout, which is what a recording product should look like.
+const doto = Doto({
+  variable: "--font-doto",
+  subsets: ["latin"],
+  weight: ["700", "800", "900"],
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "AgentTrace",
-  description: "Record-and-replay regression testing for AI agents.",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "AgentTrace: regression tests for AI agents",
+    template: "%s · AgentTrace",
+  },
+  description:
+    "Record real agent runs, replay them against a new version without calling real tools, and get a PASS/FAIL verdict.",
 };
 
+/**
+ * Only the document shell. The marketing site and the dashboard bring their
+ * own chrome from their route groups, so neither carries the other's header.
+ */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${plexSans.variable} ${jetbrainsMono.variable} ${doto.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <header className="border-b">
-          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-6 py-3">
-            <nav className="flex items-center gap-6 text-sm">
-              <Link href="/" className="font-semibold tracking-tight">
-                AgentTrace
-              </Link>
-              <Link href="/" className="text-muted-foreground hover:text-foreground">
-                Projects
-              </Link>
-            </nav>
-            <Suspense fallback={<HealthIndicatorFallback />}>
-              <HealthIndicator />
-            </Suspense>
-          </div>
-        </header>
-        <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-8">
-          {children}
-        </main>
-      </body>
+      <body className="flex min-h-full flex-col bg-background text-foreground">{children}</body>
     </html>
   );
 }

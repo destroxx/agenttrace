@@ -22,20 +22,20 @@ export function Pagination({
     <nav className="flex items-center gap-3 text-sm" aria-label="Pagination">
       {page > 1 ? (
         <Link className={link} href={href(page - 1)}>
-          ← Newer
+          Newer
         </Link>
       ) : (
-        <span className={disabled}>← Newer</span>
+        <span className={disabled}>Newer</span>
       )}
       <span className="text-muted-foreground">
         Page {page} of {pages} · {total} total
       </span>
       {page < pages ? (
         <Link className={link} href={href(page + 1)}>
-          Older →
+          Older
         </Link>
       ) : (
-        <span className={disabled}>Older →</span>
+        <span className={disabled}>Older</span>
       )}
     </nav>
   );
