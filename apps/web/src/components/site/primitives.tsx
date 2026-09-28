@@ -12,6 +12,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { sectionIndex, sectionLabel, type SectionId } from "@/components/site/sections";
+
 type Tone = "brand" | "pass" | "fail" | "warn" | "ink";
 
 const TONE: Record<Tone, string> = {
@@ -37,11 +39,15 @@ export function RecChip({ children, tone = "brand" }: { children: ReactNode; ton
   );
 }
 
-/** Section marker as a timecode: `00:03  regressions`. */
+/**
+ * Section marker as a timecode: `00:03  regressions`. The number is
+ * decoration (screen readers would read "zero zero colon zero three"), so it
+ * is hidden from them; the label stays readable.
+ */
 export function Timecode({ index, label }: { index: number; label: string }) {
   return (
     <p className="flex items-center gap-4 text-xs text-muted-foreground">
-      <span className="font-display text-base font-extrabold tracking-wider text-signal tabular-nums">
+      <span aria-hidden className="font-display text-base font-extrabold tracking-wider text-signal tabular-nums">
         00:{String(index).padStart(2, "0")}
       </span>
       <span className="h-px w-10 bg-line-strong" aria-hidden />
@@ -67,16 +73,12 @@ export function Display({
 
 export function Section({
   id,
-  index,
-  label,
   title,
   lead,
   children,
   band = false,
 }: {
-  id?: string;
-  index: number;
-  label: string;
+  id: SectionId;
   title: ReactNode;
   lead?: ReactNode;
   children: ReactNode;
@@ -87,7 +89,7 @@ export function Section({
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-14 px-5 py-24 sm:px-8 md:py-32">
         <header className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-end">
           <div className="flex flex-col gap-6">
-            <Timecode index={index} label={label} />
+            <Timecode index={sectionIndex(id)} label={sectionLabel(id)} />
             <Display className="text-4xl md:text-5xl">{title}</Display>
           </div>
           {lead ? <p className="max-w-xl text-sm leading-7 text-muted-foreground md:text-[15px] lg:justify-self-end">{lead}</p> : null}

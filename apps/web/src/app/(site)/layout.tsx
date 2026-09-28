@@ -1,16 +1,15 @@
 import Link from "next/link";
 
 import { MobileNav } from "@/components/site/mobile-nav";
+import { NAV_ITEMS } from "@/components/site/sections";
 
 const REPO_URL = "https://github.com/destroxx/agenttrace";
 
-const NAV = [
-  { href: "/#how", label: "how it works" },
-  { href: "/#regressions", label: "regressions" },
-  { href: "/#demo", label: "demo" },
-  { href: "/#ci", label: "ci" },
-  { href: "/#faq", label: "faq" },
-];
+// Footer credit. Fill in the two placeholders below.
+const BUILT_BY = "<NAME>";
+const AUTHOR_GITHUB_URL = "https://github.com/destroxx";
+const AUTHOR_LINKEDIN_URL = "<LINKEDIN URL>";
+
 
 function Wordmark() {
   return (
@@ -51,13 +50,15 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between gap-6 px-5 sm:px-8">
           <Wordmark />
           <nav aria-label="Main" className="hidden items-center gap-7 text-[13px] lg:flex">
-            {NAV.map((item, index) => (
+            {NAV_ITEMS.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 className="group flex items-baseline gap-2 text-muted-foreground transition-colors duration-200 hover:text-foreground"
               >
-                <span className="text-[10px] text-signal/70 tabular-nums group-hover:text-signal">0{index + 1}</span>
+                <span aria-hidden className="text-[10px] text-signal/70 tabular-nums group-hover:text-signal">
+                  {String(item.index).padStart(2, "0")}
+                </span>
                 {item.label}
               </Link>
             ))}
@@ -75,7 +76,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             </Link>
           </nav>
           <div className="lg:hidden">
-            <MobileNav items={[...NAV, { href: REPO_URL, label: "github" }, { href: "/projects", label: "dashboard" }]} />
+            <MobileNav items={[...NAV_ITEMS, { href: REPO_URL, label: "github" }, { href: "/projects", label: "dashboard" }]} />
           </div>
         </div>
       </header>
@@ -95,6 +96,7 @@ function SiteFooter() {
         { href: "/#regressions", label: "regressions" },
         { href: "/#demo", label: "replay demo" },
         { href: "/#ci", label: "suites and ci" },
+        { href: "/#proof", label: "proof" },
       ],
     },
     {
@@ -137,12 +139,16 @@ function SiteFooter() {
           <p className="text-[11px] tracking-[0.18em] text-muted-foreground uppercase">
             agenttrace · your recordings never leave your infrastructure
           </p>
-          <p className="text-xs text-muted-foreground">
-            Built with{" "}
-            <span role="img" aria-label="love">
-              ❤️
-            </span>{" "}
-            by <span className="text-foreground">Tanmay Singh</span>
+          <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              Built by <span className="text-foreground">{BUILT_BY}</span>
+            </span>
+            <a href={AUTHOR_GITHUB_URL} className="underline decoration-line-strong underline-offset-4 hover:text-signal">
+              GitHub
+            </a>
+            <a href={AUTHOR_LINKEDIN_URL} className="underline decoration-line-strong underline-offset-4 hover:text-signal">
+              LinkedIn
+            </a>
           </p>
         </div>
       </div>

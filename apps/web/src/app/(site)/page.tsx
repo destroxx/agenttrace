@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { DashboardPreview } from "@/components/site/dashboard-preview";
 import { Faq } from "@/components/site/faq";
 import { HeroVisual } from "@/components/site/hero-visual";
+import { PR_URL, PrProof } from "@/components/site/pr-proof";
 import {
   ButtonLink,
   C,
@@ -21,9 +22,25 @@ import {
 } from "@/components/site/primitives";
 import { RegressionExplorer } from "@/components/site/regression-explorer";
 import { ReplayLab } from "@/components/site/replay-lab";
+import { SOCIAL_DESCRIPTION, SOCIAL_TAGLINE, SOCIAL_TITLE } from "@/components/site/social-card";
 
+// The images come from opengraph-image.tsx and twitter-image.tsx beside this
+// file; metadataBase in the root layout makes their URLs absolute.
 export const metadata: Metadata = {
   title: { absolute: "AgentTrace: regression tests for AI agents" },
+  description: SOCIAL_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName: SOCIAL_TITLE,
+    title: `${SOCIAL_TITLE}: ${SOCIAL_TAGLINE}`,
+    description: SOCIAL_DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${SOCIAL_TITLE}: ${SOCIAL_TAGLINE}`,
+    description: SOCIAL_DESCRIPTION,
+  },
 };
 
 /*
@@ -45,6 +62,7 @@ export default function HomePage() {
       <Dashboard />
       <Sdk />
       <Ci />
+      <Proof />
       <Quickstart />
       <Questions />
       <FinalCta />
@@ -112,8 +130,6 @@ function Regressions() {
   return (
     <Section
       id="regressions"
-      index={1}
-      label="regressions"
       title="Agents break quietly. AgentTrace shows you where."
       lead="Every difference between a recording and its replay becomes a finding with a stable code and a severity. These are the defaults, and a ComparisonPolicy can raise, lower or ignore any of them."
     >
@@ -176,8 +192,6 @@ function How() {
   return (
     <Section
       id="how"
-      index={2}
-      label="how it works"
       title="Record once. Replay every change."
       lead="The recording becomes the fixture. Every future version of the agent is tested against what the tools actually returned, not against a mock someone wrote from memory."
       band
@@ -205,8 +219,6 @@ function Demo() {
   return (
     <Section
       id="demo"
-      index={3}
-      label="replay demo"
       title="Four changes. One recording. Four verdicts."
       lead="A support agent was recorded once. Four changed versions were then replayed against that recording. Pick one to see how each tool call matched and what the comparison decided."
     >
@@ -224,8 +236,6 @@ function Dashboard() {
   return (
     <Section
       id="dashboard"
-      index={4}
-      label="dashboard"
       title="Read a run like a timeline, not a log."
       lead="A read-only view of everything the SDK uploads: projects, runs with their verdicts, each run's timeline and its comparison report."
       band
@@ -259,8 +269,6 @@ function Sdk() {
   return (
     <Section
       id="sdk"
-      index={5}
-      label="python sdk"
       title="One decorator per tool. Nothing new in your dependency tree."
       lead="The SDK runs inside your agent's process, so it uses the standard library only. Recording never raises into your code: tool results and exceptions pass through unchanged, and a failed upload is logged, never thrown."
     >
@@ -312,8 +320,6 @@ function Ci() {
   return (
     <Section
       id="ci"
-      index={6}
-      label="regression suites"
       title="Recordings live in your repo. The exit code is the gate."
       lead="Export a stored run to JSON, review it for secrets, and commit it next to a suite.toml. run-suite replays every case offline, with no API, no network and no real tools. This repo's own GitHub Actions workflow runs run-suite on every pull request, so a regression turns the PR red."
       band
@@ -359,6 +365,26 @@ function Ci() {
 }
 
 const REPO_URL = "https://github.com/destroxx/agenttrace";
+
+function Proof() {
+  return (
+    <Section
+      id="proof"
+      title="A real pull request, turned red."
+      lead="One changed line, and CI named the exact tool call the agent stopped making."
+    >
+      <PrProof />
+      <p className="text-sm text-muted-foreground">
+        <a
+          href={PR_URL}
+          className="text-foreground underline decoration-signal underline-offset-4 hover:text-signal"
+        >
+          See the pull request on GitHub
+        </a>
+      </p>
+    </Section>
+  );
+}
 
 function Quickstart() {
   // Each line is a command, or a note (starting with "#") shown as a comment.
@@ -407,10 +433,9 @@ function Quickstart() {
   return (
     <Section
       id="quickstart"
-      index={7}
-      label="quickstart"
       title="Your first recording, replayed and judged."
       lead="You need Python 3.12+, Node 20+ and Docker. The demo agent is scripted, so there is no LLM and no API key. With AGENTTRACE_PROJECT_ID set, the two examples fill that project with a recording, its replays and their comparison reports."
+      band
     >
       <ol className="grid gap-5 md:grid-cols-2">
         {steps.map((step, index) => (
@@ -453,7 +478,7 @@ function Quickstart() {
 
 function Questions() {
   return (
-    <Section id="faq" index={8} label="faq" title="Questions teams ask first." band>
+    <Section id="faq" title="Questions teams ask first.">
       <Faq />
     </Section>
   );

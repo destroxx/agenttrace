@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Doto, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 
+import { siteUrl } from "@/lib/config";
+
 import "./globals.css";
 
 const plexSans = IBM_Plex_Sans({
@@ -23,6 +25,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
     default: "AgentTrace: regression tests for AI agents",
     template: "%s · AgentTrace",

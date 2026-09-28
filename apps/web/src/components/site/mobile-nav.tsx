@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 /** The site nav below `md`: a toggle that closes when a link is followed or on Escape. */
-export function MobileNav({ items }: { items: { href: string; label: string }[] }) {
+export function MobileNav({ items }: { items: { href: string; label: string; index?: number }[] }) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -41,6 +41,11 @@ export function MobileNav({ items }: { items: { href: string; label: string }[] 
               onClick={() => setOpen(false)}
               className="flex min-h-11 items-center px-3 text-muted-foreground hover:bg-muted hover:text-foreground"
             >
+              {item.index ? (
+                <span aria-hidden className="mr-3 text-[10px] text-signal/70 tabular-nums">
+                  {String(item.index).padStart(2, "0")}
+                </span>
+              ) : null}
               {item.label}
             </Link>
           ))}
