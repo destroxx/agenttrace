@@ -6,7 +6,7 @@
 
 export function formatTimestamp(iso: string | null): string {
   if (!iso) {
-    return "—";
+    return "-";
   }
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {
@@ -17,7 +17,7 @@ export function formatTimestamp(iso: string | null): string {
 
 export function formatDuration(ms: number | null | undefined): string {
   if (ms === null || ms === undefined) {
-    return "—";
+    return "-";
   }
   if (ms < 1000) {
     return `${ms} ms`;

@@ -14,16 +14,16 @@ export async function HealthIndicator() {
   const [tone, label, detail] = !result.ok
     ? ["bg-destructive", "API unreachable", result.error]
     : result.report.status === "ok"
-      ? ["bg-emerald-500", "API healthy", `v${result.report.version} · ${result.report.environment}`]
+      ? ["bg-pass", "API healthy", `v${result.report.version} · ${result.report.environment}`]
       : [
-          "bg-amber-500",
+          "bg-warn",
           "API degraded",
           `database ${result.report.checks.database?.status ?? "unknown"}`,
         ];
   return (
     <span
       className="flex items-center gap-2 text-xs text-muted-foreground"
-      title={`${apiBaseUrl}/health — ${detail}`}
+      title={`${apiBaseUrl}/health: ${detail}`}
     >
       <span className={`size-2 rounded-full ${tone}`} aria-hidden />
       {label}

@@ -10,8 +10,8 @@ import { cn } from "cn";
 import { Badge } from "@/components/ui/badge";
 import type { RunStatus, Severity, Verdict } from "@/lib/api";
 
-const PASS = "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400";
-const WARNING = "bg-amber-500/15 text-amber-700 dark:text-amber-400";
+const PASS = "bg-pass/15 text-pass";
+const WARNING = "bg-warn/15 text-warn";
 
 export function StatusBadge({ status }: { status: RunStatus | string }) {
   if (status === "completed") {

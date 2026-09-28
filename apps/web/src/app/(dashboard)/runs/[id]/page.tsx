@@ -32,7 +32,7 @@ export default async function RunPage({ params }: PageProps<"/runs/[id]">) {
   const project = await getProject(run.data.project_id);
 
   const crumbs: Crumb[] = [
-    { label: "Projects", href: "/" },
+    { label: "Projects", href: "/projects" },
     {
       label: project.ok ? project.data.name : "Project",
       href: `/projects/${run.data.project_id}`,
@@ -57,7 +57,7 @@ export default async function RunPage({ params }: PageProps<"/runs/[id]">) {
           <code className="text-xs">{r.id}</code>
         </Fact>
         <Fact label="Version">
-          <span className="font-mono text-xs">{r.agent_version ?? "—"}</span>
+          <span className="font-mono text-xs">{r.agent_version ?? "-"}</span>
         </Fact>
         <Fact label="Started">{formatTimestamp(r.started_at)}</Fact>
         <Fact label="Completed">{formatTimestamp(r.completed_at)}</Fact>

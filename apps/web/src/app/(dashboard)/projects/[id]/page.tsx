@@ -50,7 +50,7 @@ export default async function ProjectPage({
 
   return (
     <>
-      <PageHeader crumbs={[{ label: "Projects", href: "/" }]} title={project.data.name} />
+      <PageHeader crumbs={[{ label: "Projects", href: "/projects" }]} title={project.data.name} />
       {project.data.description ? (
         <p className="-mt-3 text-sm text-muted-foreground">{project.data.description}</p>
       ) : null}
@@ -99,9 +99,9 @@ export default async function ProjectPage({
 
 function RunsTable({ runs }: { runs: RunSummary[] }) {
   return (
-    <div className="overflow-x-auto rounded-lg border">
+    <div className="overflow-x-auto rounded-xl border bg-card">
       <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-left text-muted-foreground">
+        <thead className="bg-muted/50 text-left font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
           <tr>
             <th className="px-4 py-2 font-medium">Run</th>
             <th className="px-4 py-2 font-medium">Version</th>
@@ -135,7 +135,7 @@ function RunsTable({ runs }: { runs: RunSummary[] }) {
                   </div>
                 ) : null}
               </td>
-              <td className="px-4 py-2 font-mono text-xs">{run.agent_version ?? "—"}</td>
+              <td className="px-4 py-2 font-mono text-xs">{run.agent_version ?? "-"}</td>
               <td className="px-4 py-2">
                 <StatusBadge status={run.status} />
               </td>
@@ -150,7 +150,7 @@ function RunsTable({ runs }: { runs: RunSummary[] }) {
                     <VerdictBadge verdict={run.verdict} />
                   </Link>
                 ) : (
-                  <span className="text-muted-foreground">—</span>
+                  <span className="text-muted-foreground">-</span>
                 )}
               </td>
             </tr>
