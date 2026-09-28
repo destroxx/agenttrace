@@ -169,6 +169,9 @@ jobs:
             exit 1
           fi
       - name: Run the example suite
+        # Runs even when the demo step failed: the two checks are independent,
+        # and the suite's verdict is the one a reader needs on the summary page.
+        if: ${{ !cancelled() }}
         # Exit 0 passes; 1 (a case regressed) and 2 (the suite could not run)
         # both fail the step, and the annotation says which. The summary is
         # written before exiting, so the verdict is on the run page either way.
