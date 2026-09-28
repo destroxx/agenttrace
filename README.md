@@ -483,7 +483,7 @@ ruff check apps/api packages/python-sdk examples
 cd apps/web && npm run lint && npm run build && npx tsc --noEmit
 ```
 
-Currently 103 API tests and 180 SDK tests. The API suite owns a separate database
+Currently 103 API tests and 184 SDK tests. The API suite owns a separate database
 and rolls back every test, so running it never touches development data.
 
 Migrations are reversible; the round trip is worth checking after a schema
