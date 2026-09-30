@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-/** The site nav below `md`: a toggle that closes when a link is followed or on Escape. */
+/** The site's and the dashboard's nav below `md`: a toggle that closes when a link is followed or on Escape. */
 export function MobileNav({ items }: { items: { href: string; label: string; index?: number }[] }) {
   const [open, setOpen] = useState(false);
 

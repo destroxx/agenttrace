@@ -462,6 +462,10 @@ value is that nothing changes them after the fact. A dashboard that could edit
 a run or a verdict would be a second, unaudited way to rewrite history, and
 without authentication anyone who can reach it could do so.
 
+**The dashboard is always dark**, whatever the OS theme, like the marketing
+site: one brand from the site to the app, and one theme instead of two halves
+the surface to design and check.
+
 ## Regression suites
 
 A suite is a TOML file in the developer's own repository listing cases, each a
