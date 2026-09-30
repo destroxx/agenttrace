@@ -5,8 +5,6 @@ import { REPO_URL, Wordmark } from "@/components/brand/wordmark";
 import { NAV_ITEMS } from "@/components/site/sections";
 
 
-const REPO_URL = "https://github.com/destroxx/agenttrace";
-
 // Footer credit.
 const BUILT_BY = "Tanmay Singh";
 
