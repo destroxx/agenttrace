@@ -1,25 +1,12 @@
 import type { Metadata } from "next";
 
+import { ButtonLink, Display, Micro, Panel, RecChip } from "@/components/brand/primitives";
+import { REPO_URL } from "@/components/brand/wordmark";
 import { DashboardPreview } from "@/components/site/dashboard-preview";
 import { Faq } from "@/components/site/faq";
 import { HeroVisual } from "@/components/site/hero-visual";
 import { PR_URL, PrProof } from "@/components/site/pr-proof";
-import {
-  ButtonLink,
-  C,
-  D,
-  Display,
-  F,
-  FAIL,
-  K,
-  Micro,
-  Panel,
-  PASS,
-  RecChip,
-  S,
-  Section,
-  Window,
-} from "@/components/site/primitives";
+import { C, D, F, FAIL, K, PASS, S, Section, Window } from "@/components/site/primitives";
 import { RegressionExplorer } from "@/components/site/regression-explorer";
 import { ReplayLab } from "@/components/site/replay-lab";
 import { SOCIAL_DESCRIPTION, SOCIAL_TAGLINE, SOCIAL_TITLE } from "@/components/site/social-card";
@@ -363,8 +350,6 @@ function Ci() {
     </Section>
   );
 }
-
-const REPO_URL = "https://github.com/destroxx/agenttrace";
 
 function Proof() {
   return (

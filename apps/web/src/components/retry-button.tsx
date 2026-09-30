@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
-import { Button } from "@/components/ui/button";
+import { buttonClasses } from "@/components/brand/primitives";
 
 /** Re-run the page's server-side fetches without a full browser reload. */
 export function RetryButton({ label = "Try again" }: { label?: string }) {
@@ -11,13 +11,13 @@ export function RetryButton({ label = "Try again" }: { label?: string }) {
   const [isPending, startTransition] = useTransition();
 
   return (
-    <Button
-      variant="outline"
-      className="self-start"
+    <button
+      type="button"
+      className={`${buttonClasses("primary")} self-start`}
       disabled={isPending}
       onClick={() => startTransition(() => router.refresh())}
     >
       {isPending ? "Retrying…" : label}
-    </Button>
+    </button>
   );
 }

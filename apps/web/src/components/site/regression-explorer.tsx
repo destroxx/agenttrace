@@ -10,7 +10,7 @@
 
 import { useRef, useState, type KeyboardEvent } from "react";
 
-import { Micro, Panel, VerdictChip } from "@/components/site/primitives";
+import { Micro, Panel, VerdictChip } from "@/components/brand/primitives";
 
 type Mark = "same" | "missing" | "new" | "changed";
 

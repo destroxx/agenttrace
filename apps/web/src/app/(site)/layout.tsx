@@ -1,30 +1,18 @@
 import Link from "next/link";
 
-import { MobileNav } from "@/components/site/mobile-nav";
+import { MobileNav } from "@/components/brand/mobile-nav";
+import { REPO_URL, Wordmark } from "@/components/brand/wordmark";
 import { NAV_ITEMS } from "@/components/site/sections";
+
 
 const REPO_URL = "https://github.com/destroxx/agenttrace";
 
 // Footer credit.
 const BUILT_BY = "Tanmay Singh";
+
 const AUTHOR_GITHUB_URL = "https://github.com/destroxx";
 const AUTHOR_LINKEDIN_URL = "https://www.linkedin.com/in/tanmay-singh-6438a1201/";
 
-
-function Wordmark() {
-  return (
-    <Link
-      href="/"
-      className="flex items-center gap-2.5 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-signal"
-    >
-      <span aria-hidden className="relative flex size-3 items-center justify-center">
-        <span className="animate-trace absolute size-3 rounded-full bg-signal/30" />
-        <span className="size-2 rounded-full bg-signal" />
-      </span>
-      <span className="font-display text-2xl leading-none font-black tracking-tight">agenttrace</span>
-    </Link>
-  );
-}
 
 /**
  * The marketing site is always dark (`.dark` plus `data-surface`, which also

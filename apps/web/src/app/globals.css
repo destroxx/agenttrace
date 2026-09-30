@@ -3,7 +3,9 @@
 @import "shadcn/tailwind.css";
 
 /* Dark follows the operating system, and any subtree under `.dark` is dark
-   regardless: the marketing site is always dark, the dashboard follows the OS. */
+   regardless: the marketing site, the dashboard and the 404 page are all
+   always dark, one brand from site to app. The light tokens below are only a
+   fallback for markup outside those `.dark` wrappers. */
 @custom-variant dark {
   @media (prefers-color-scheme: dark) {
     @slot;
@@ -162,9 +164,10 @@
   }
 }
 
-/* The marketing site is always dark; `:has` darkens the page behind it too. */
+/* The marketing site and the dashboard are always dark; `:has` darkens the
+   page behind them too (overscroll, and the area below a short page). */
 .dark,
-:root:has(.dark[data-surface="site"]) {
+:root:has(.dark[data-surface]) {
   --background: #0d0c0a;
   --foreground: #ece5d3;
   --card: #15130f;
@@ -218,6 +221,12 @@
   }
   html {
     @apply font-sans;
+  }
+  /* A visible focus ring on everything focusable in the dashboard, in the
+     site's signal orange, without repeating it on every link and summary. */
+  [data-surface="app"] :focus-visible {
+    outline: 2px solid var(--signal);
+    outline-offset: 3px;
   }
 }
 

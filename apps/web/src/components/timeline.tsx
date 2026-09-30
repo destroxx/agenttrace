@@ -8,53 +8,59 @@
  * expand with a native <details>; there is no client JavaScript here.
  */
 
-import { Badge } from "@/components/ui/badge";
+import { Tag } from "@/components/badges";
+import { Panel } from "@/components/brand/primitives";
 import { JsonBlock } from "@/components/json-view";
 import type { RunEvent } from "@/lib/api";
 import { formatDuration } from "@/lib/format";
 import { buildTimeline, type EventStep, type Timeline, type ToolStep } from "@/lib/timeline";
 
 // Distinguishes lanes of concurrent steps; lane 0 (ran alone) stays neutral.
-const LANE_COLOURS = [
+// The landing page's picture of this page draws its bars with these too.
+export const LANE_COLOURS = [
   "bg-foreground/60",
-  "bg-sky-500",
-  "bg-violet-500",
-  "bg-teal-500",
-  "bg-orange-500",
+  "bg-chart-2",
+  "bg-chart-3",
+  "bg-chart-4",
+  "bg-chart-5",
 ];
 const GRID = "grid grid-cols-[4.5rem_minmax(0,1fr)_5rem_minmax(6rem,14rem)] items-center gap-3";
+const SUMMARY = `${GRID} cursor-pointer list-none px-4 py-2 text-[13px] transition-colors hover:bg-card [&::-webkit-details-marker]:hidden`;
+const DETAIL = "grid gap-3 border-t bg-background/60 px-4 py-4 md:grid-cols-2";
 
 export function RunTimeline({ events }: { events: RunEvent[] }) {
   if (events.length === 0) {
-    return <p className="text-sm text-muted-foreground">This run recorded no events.</p>;
+    return <p className="text-[13px] text-muted-foreground">This run recorded no events.</p>;
   }
   const timeline = buildTimeline(events);
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm text-muted-foreground">
+    <div className="flex flex-col gap-3">
+      <p className="text-xs leading-6 text-muted-foreground">
         {events.length} events as {timeline.steps.length} steps
         {timeline.parallelSteps > 0
           ? ` · ${timeline.parallelSteps} steps ran in parallel (overlapping bars)`
           : " · no parallel calls"}
         . Positions are event sequence numbers.
       </p>
-      <div className="overflow-x-auto rounded-xl border bg-card">
-        <div className="min-w-[40rem]">
-          <div className={`${GRID} bg-muted/50 px-4 py-2 font-mono text-[11px] font-medium tracking-wider text-muted-foreground uppercase`}>
-            <span>Seq</span>
-            <span>Step</span>
-            <span className="text-right">Duration</span>
-            <span>Span</span>
+      <Panel>
+        <div className="overflow-x-auto">
+          <div className="min-w-[40rem]">
+            <div className={`${GRID} border-b bg-muted/50 px-4 py-2.5 text-[10px] tracking-[0.18em] text-muted-foreground uppercase`}>
+              <span>seq</span>
+              <span>step</span>
+              <span className="text-right">duration</span>
+              <span>span</span>
+            </div>
+            {timeline.steps.map((step) =>
+              step.kind === "tool" ? (
+                <ToolRow key={step.key} step={step} timeline={timeline} />
+              ) : (
+                <EventRow key={step.key} step={step} timeline={timeline} />
+              ),
+            )}
           </div>
-          {timeline.steps.map((step) =>
-            step.kind === "tool" ? (
-              <ToolRow key={step.key} step={step} timeline={timeline} />
-            ) : (
-              <EventRow key={step.key} step={step} timeline={timeline} />
-            ),
-          )}
         </div>
-      </div>
+      </Panel>
     </div>
   );
 }
@@ -62,26 +68,26 @@ export function RunTimeline({ events }: { events: RunEvent[] }) {
 function ToolRow({ step, timeline }: { step: ToolStep; timeline: Timeline }) {
   const parallel = step.concurrentWith.length > 0;
   return (
-    <details className="group border-t">
-      <summary className={`${GRID} cursor-pointer list-none px-4 py-2 text-sm hover:bg-muted/30 [&::-webkit-details-marker]:hidden`}>
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+    <details className="group border-t first-of-type:border-t-0">
+      <summary className={SUMMARY}>
+        <span className="text-xs tabular-nums text-muted-foreground">
           {step.start}
           {step.end !== null ? `-${step.end}` : "-?"}
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-2">
           <Chevron />
-          <span className="font-mono font-medium">{step.toolName ?? "(unnamed tool)"}</span>
+          <span className="font-medium">{step.toolName ?? "(unnamed tool)"}</span>
           <OutcomeBadge outcome={step.outcome} />
           {parallel ? (
-            <Badge
-              variant="outline"
+            <span
+              className="border px-1.5 text-[10px] text-muted-foreground"
               title={`Open at the same time as ${step.concurrentWith
                 .map((other) => `${other.toolName} (seq ${other.start})`)
                 .join(", ")}`}
             >
               parallel with{" "}
               {step.concurrentWith.map((other) => `${other.toolName} #${other.start}`).join(", ")}
-            </Badge>
+            </span>
           ) : null}
         </span>
         <span className="text-right text-xs tabular-nums">
@@ -96,7 +102,7 @@ function ToolRow({ step, timeline }: { step: ToolStep; timeline: Timeline }) {
           lane={parallel ? step.lane : null}
         />
       </summary>
-      <div className="grid gap-3 border-t bg-muted/10 px-4 py-3 md:grid-cols-2">
+      <div className={DETAIL}>
         <Side
           title={`Call${step.call ? ` · seq ${step.call.sequence}` : ""}`}
           empty="No tool_call event was recorded for this call id."
@@ -127,18 +133,18 @@ function EventRow({ step, timeline }: { step: EventStep; timeline: Timeline }) {
   const { event } = step;
   const hasPayload = event.arguments !== null || event.response !== null;
   return (
-    <details className="group border-t">
-      <summary className={`${GRID} cursor-pointer list-none px-4 py-2 text-sm hover:bg-muted/30 [&::-webkit-details-marker]:hidden`}>
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+    <details className="group border-t first-of-type:border-t-0">
+      <summary className={SUMMARY}>
+        <span className="text-xs tabular-nums text-muted-foreground">
           {event.sequence}
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-2">
           <Chevron />
-          <span className={event.event_type === "error" ? "font-medium text-destructive" : "font-medium"}>
+          <span className={event.event_type === "error" ? "text-fail" : "text-muted-foreground"}>
             {event.event_type}
           </span>
           {event.tool_name ? (
-            <span className="font-mono text-muted-foreground">{event.tool_name}</span>
+            <span className="text-muted-foreground">{event.tool_name}</span>
           ) : null}
         </span>
         <span className="text-right text-xs tabular-nums">
@@ -146,7 +152,7 @@ function EventRow({ step, timeline }: { step: EventStep; timeline: Timeline }) {
         </span>
         <SpanBar timeline={timeline} start={event.sequence} end={event.sequence} colour="bg-muted-foreground" lane={null} />
       </summary>
-      <div className="grid gap-3 border-t bg-muted/10 px-4 py-3 md:grid-cols-2">
+      <div className={DETAIL}>
         {hasPayload ? (
           <>
             {event.arguments !== null ? <Side title="Arguments" value={event.arguments} present label="arguments" /> : null}
@@ -181,7 +187,7 @@ function Side({
 }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <span className="text-xs font-medium text-muted-foreground">{title}</span>
+      <span className="text-[10px] tracking-[0.18em] text-muted-foreground uppercase">{title}</span>
       {present ? (
         <JsonBlock value={value ?? null} className="rounded-md border" />
       ) : (
@@ -213,13 +219,13 @@ function SpanBar({
     <span className="relative block h-4" aria-hidden>
       <span className="absolute inset-x-0 top-1/2 h-px bg-border" />
       <span
-        className={`absolute top-1/2 h-2 min-w-2 -translate-y-1/2 rounded-full ${colour} ${
+        className={`absolute top-1/2 h-2 min-w-2 -translate-y-1/2 ${colour} ${
           open ? "opacity-50" : ""
         }`}
         style={{ left: `${left}%`, width: `${width}%` }}
       />
       {lane !== null ? (
-        <span className="absolute -top-0.5 right-0 font-mono text-[10px] text-muted-foreground">
+        <span className="absolute -top-0.5 right-0 text-[10px] text-muted-foreground">
           L{lane + 1}
         </span>
       ) : null}
@@ -229,10 +235,10 @@ function SpanBar({
 
 function OutcomeBadge({ outcome }: { outcome: ToolStep["outcome"] }) {
   if (outcome === "error") {
-    return <Badge variant="destructive">error</Badge>;
+    return <Tag look="fail">error</Tag>;
   }
   if (outcome === "no_result") {
-    return <Badge variant="outline">no result</Badge>;
+    return <Tag look="outline">no result</Tag>;
   }
   return null;
 }

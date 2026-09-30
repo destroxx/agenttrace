@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 
 import { ApiProblem } from "@/components/api-problem";
 import { ReplayBadge, StatusBadge, VerdictBadge } from "@/components/badges";
+import { Micro } from "@/components/brand/primitives";
+import { DataTable, ROW, THEAD } from "@/components/data-table";
 import { PageHeader } from "@/components/page-header";
 import { Pagination, pageParam } from "@/components/pagination";
 import {
@@ -52,11 +54,11 @@ export default async function ProjectPage({
     <>
       <PageHeader crumbs={[{ label: "Projects", href: "/projects" }]} title={project.data.name} />
       {project.data.description ? (
-        <p className="-mt-3 text-sm text-muted-foreground">{project.data.description}</p>
+        <p className="-mt-4 max-w-xl text-sm leading-7 text-muted-foreground">{project.data.description}</p>
       ) : null}
 
-      <nav className="flex flex-wrap items-center gap-2 text-sm" aria-label="Filter by status">
-        <span className="text-muted-foreground">Status:</span>
+      <nav className="flex flex-wrap items-center gap-2 text-[13px]" aria-label="Filter by status">
+        <Micro className="mr-2">status</Micro>
         {[undefined, ...RUN_STATUSES].map((option) => {
           const active = option === status;
           return (
@@ -64,8 +66,10 @@ export default async function ProjectPage({
               key={option ?? "all"}
               href={href({ status: option })}
               aria-current={active ? "page" : undefined}
-              className={`rounded-md border px-2.5 py-1 ${
-                active ? "bg-foreground text-background" : "hover:bg-muted"
+              className={`inline-flex h-9 items-center rounded-md border px-3.5 transition-colors ${
+                active
+                  ? "border-signal bg-signal/10 text-signal"
+                  : "border-line-strong text-muted-foreground hover:border-foreground/60 hover:text-foreground"
               }`}
             >
               {option ?? "all"}
@@ -77,7 +81,7 @@ export default async function ProjectPage({
       {!runs.ok ? (
         <ApiProblem failure={runs} />
       ) : runs.data.total === 0 ? (
-        <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+        <p className="bg-grid rounded-md border border-dashed border-line-strong p-6 text-[13px] leading-6 text-muted-foreground sm:p-8">
           {status
             ? `No ${status} runs in this project.`
             : "No runs yet. Runs appear here once an agent traced with the SDK uploads them."}
@@ -99,64 +103,69 @@ export default async function ProjectPage({
 
 function RunsTable({ runs }: { runs: RunSummary[] }) {
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-left font-mono text-[11px] tracking-wider text-muted-foreground uppercase">
-          <tr>
-            <th className="px-4 py-2 font-medium">Run</th>
-            <th className="px-4 py-2 font-medium">Version</th>
-            <th className="px-4 py-2 font-medium">Status</th>
-            <th className="px-4 py-2 font-medium">Started</th>
-            <th className="px-4 py-2 text-right font-medium">Duration</th>
-            <th className="px-4 py-2 text-right font-medium">Events</th>
-            <th className="px-4 py-2 font-medium">Verdict</th>
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((run) => (
-            <tr key={run.id} className="border-t align-top hover:bg-muted/30">
-              <td className="px-4 py-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link href={`/runs/${run.id}`} className="font-medium hover:underline underline-offset-4">
-                    {run.agent_name}
+    <DataTable minWidth="54rem">
+      <thead className={THEAD}>
+        <tr>
+          <th className="px-4 py-2.5 font-medium">run</th>
+          <th className="px-4 py-2.5 font-medium">version</th>
+          <th className="px-4 py-2.5 font-medium">status</th>
+          <th className="px-4 py-2.5 font-medium">started</th>
+          <th className="px-4 py-2.5 text-right font-medium">duration</th>
+          <th className="px-4 py-2.5 text-right font-medium">events</th>
+          <th className="px-4 py-2.5 font-medium">verdict</th>
+        </tr>
+      </thead>
+      <tbody>
+        {runs.map((run) => (
+          <tr key={run.id} className={`${ROW} align-top`}>
+            <td className="px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  href={`/runs/${run.id}`}
+                  className="font-medium underline decoration-line-strong underline-offset-4 transition-colors hover:text-signal hover:decoration-signal"
+                >
+                  {run.agent_name}
+                </Link>
+                <span className="text-xs text-muted-foreground">{shortId(run.id)}</span>
+                {run.replay_of_run_id ? <ReplayBadge /> : null}
+              </div>
+              {run.replay_of_run_id ? (
+                <div className="mt-1 text-[11px] text-muted-foreground">
+                  replay of{" "}
+                  <Link
+                    href={`/runs/${run.replay_of_run_id}`}
+                    className="underline decoration-line-strong underline-offset-4 hover:text-signal"
+                  >
+                    {shortId(run.replay_of_run_id)}
                   </Link>
-                  <code className="text-xs text-muted-foreground">{shortId(run.id)}</code>
-                  {run.replay_of_run_id ? <ReplayBadge /> : null}
                 </div>
-                {run.replay_of_run_id ? (
-                  <div className="text-xs text-muted-foreground">
-                    replay of{" "}
-                    <Link
-                      href={`/runs/${run.replay_of_run_id}`}
-                      className="font-mono underline-offset-4 hover:underline"
-                    >
-                      {shortId(run.replay_of_run_id)}
-                    </Link>
-                  </div>
-                ) : null}
-              </td>
-              <td className="px-4 py-2 font-mono text-xs">{run.agent_version ?? "-"}</td>
-              <td className="px-4 py-2">
-                <StatusBadge status={run.status} />
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap text-muted-foreground">
-                {formatTimestamp(run.started_at)}
-              </td>
-              <td className="px-4 py-2 text-right tabular-nums">{formatDuration(run.duration_ms)}</td>
-              <td className="px-4 py-2 text-right tabular-nums">{run.event_count}</td>
-              <td className="px-4 py-2">
-                {run.verdict ? (
-                  <Link href={`/runs/${run.id}/comparison`} title="Open the comparison report">
-                    <VerdictBadge verdict={run.verdict} />
-                  </Link>
-                ) : (
-                  <span className="text-muted-foreground">-</span>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+              ) : null}
+            </td>
+            <td className="px-4 py-3 text-xs">{run.agent_version ?? "-"}</td>
+            <td className="px-4 py-3">
+              <StatusBadge status={run.status} />
+            </td>
+            <td className="px-4 py-3 whitespace-nowrap text-muted-foreground">
+              {formatTimestamp(run.started_at)}
+            </td>
+            <td className="px-4 py-3 text-right whitespace-nowrap tabular-nums">{formatDuration(run.duration_ms)}</td>
+            <td className="px-4 py-3 text-right tabular-nums">{run.event_count}</td>
+            <td className="px-4 py-3">
+              {run.verdict ? (
+                <Link
+                  href={`/runs/${run.id}/comparison`}
+                  title="Open the comparison report"
+                  className="inline-flex rounded-sm"
+                >
+                  <VerdictBadge verdict={run.verdict} />
+                </Link>
+              ) : (
+                <span className="text-muted-foreground">-</span>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </DataTable>
   );
 }

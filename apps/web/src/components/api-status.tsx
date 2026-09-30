@@ -9,15 +9,8 @@
 
 import { useState, useTransition } from "react";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Tag } from "@/components/badges";
+import { buttonClasses, Micro, Panel } from "@/components/brand/primitives";
 import { apiBaseUrl } from "@/lib/config";
 import { fetchHealth, type HealthResult } from "@/lib/health";
 
@@ -32,28 +25,26 @@ export function ApiStatus({ initialResult }: { initialResult: HealthResult }) {
   };
 
   return (
-    <Card className="w-full">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between gap-4">
-          API status
+    <Panel className="w-full">
+      <div className="flex flex-col gap-5 p-5 sm:p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <Micro>api status</Micro>
+            <code className="text-[13px] break-all">{apiBaseUrl}/health</code>
+          </div>
           <StatusBadge result={result} isPending={isPending} />
-        </CardTitle>
-        <CardDescription>
-          <code>{apiBaseUrl}/health</code>
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
+        </div>
         <Details result={result} />
-        <Button
-          variant="outline"
-          className="self-start"
+        <button
+          type="button"
+          className={`${buttonClasses("secondary")} self-start`}
           disabled={isPending}
           onClick={recheck}
         >
           {isPending ? "Checking…" : "Check again"}
-        </Button>
-      </CardContent>
-    </Card>
+        </button>
+      </div>
+    </Panel>
   );
 }
 
@@ -65,22 +56,22 @@ function StatusBadge({
   isPending: boolean;
 }) {
   if (isPending) {
-    return <Badge variant="secondary">Checking…</Badge>;
+    return <Tag>checking…</Tag>;
   }
   if (!result.ok) {
-    return <Badge variant="destructive">Unreachable</Badge>;
+    return <Tag look="fail">unreachable</Tag>;
   }
   return result.report.status === "ok" ? (
-    <Badge>Healthy</Badge>
+    <Tag look="pass">healthy</Tag>
   ) : (
-    <Badge variant="destructive">Degraded</Badge>
+    <Tag look="fail">degraded</Tag>
   );
 }
 
 function Details({ result }: { result: HealthResult }) {
   if (!result.ok) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="text-[13px] leading-6 text-muted-foreground">
         Could not reach the API ({result.error}). Start it with{" "}
         <code>uvicorn app.main:app --reload</code> in <code>apps/api</code>.
       </p>
@@ -90,7 +81,7 @@ function Details({ result }: { result: HealthResult }) {
   const database = result.report.checks.database;
 
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
+    <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-[13px]">
       <dt className="text-muted-foreground">Version</dt>
       <dd>{result.report.version}</dd>
       <dt className="text-muted-foreground">Environment</dt>
