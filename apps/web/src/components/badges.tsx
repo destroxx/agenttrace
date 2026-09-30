@@ -1,26 +1,59 @@
 /**
- * Status, verdict and severity badges.
+ * Status, verdict and severity badges, in the site's tag style: small, square
+ * and letter-spaced, like the chips in the landing page's dashboard picture.
  *
  * Every badge carries its meaning in text, not only in colour, so it reads
- * the same in both themes and to anyone who cannot tell red from green.
+ * the same to anyone who cannot tell red from green.
  */
 
-import { cn } from "cn";
+import type { ReactNode } from "react";
 
-import { Badge } from "@/components/ui/badge";
+import { VerdictChip } from "@/components/brand/primitives";
 import type { RunStatus, Severity, Verdict } from "@/lib/api";
 
-const PASS = "bg-pass/15 text-pass";
-const WARNING = "bg-warn/15 text-warn";
+const TAG = "inline-flex h-5 shrink-0 items-center gap-1.5 rounded-sm px-2 text-[10px] font-medium tracking-[0.12em] whitespace-nowrap uppercase";
+
+const LOOK = {
+  neutral: "bg-secondary text-secondary-foreground",
+  outline: "border border-line-strong text-muted-foreground",
+  pass: "bg-pass/12 text-pass",
+  fail: "bg-fail/12 text-fail",
+  warn: "bg-warn/12 text-warn",
+  live: "border border-signal/40 text-signal",
+};
+
+export function Tag({
+  look = "neutral",
+  title,
+  children,
+}: {
+  look?: keyof typeof LOOK;
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span className={`${TAG} ${LOOK[look]}`} title={title}>
+      {children}
+    </span>
+  );
+}
 
 export function StatusBadge({ status }: { status: RunStatus | string }) {
   if (status === "completed") {
-    return <Badge variant="secondary">completed</Badge>;
+    return <Tag>completed</Tag>;
   }
   if (status === "failed") {
-    return <Badge variant="destructive">failed</Badge>;
+    return <Tag look="fail">failed</Tag>;
   }
-  return <Badge variant="outline">{status}</Badge>;
+  if (status === "running") {
+    return (
+      <Tag look="live">
+        <span className="animate-trace size-1.5 rounded-full bg-current" aria-hidden />
+        running
+      </Tag>
+    );
+  }
+  return <Tag look="outline">{status}</Tag>;
 }
 
 export function VerdictBadge({
@@ -30,29 +63,23 @@ export function VerdictBadge({
   verdict: Verdict;
   className?: string;
 }) {
-  return verdict === "pass" ? (
-    <Badge className={cn(PASS, className)}>PASS</Badge>
-  ) : (
-    <Badge variant="destructive" className={className}>
-      FAIL
-    </Badge>
-  );
+  return <VerdictChip verdict={verdict} className={className} />;
 }
 
 export function SeverityBadge({ severity }: { severity: Severity | string }) {
   if (severity === "error") {
-    return <Badge variant="destructive">error</Badge>;
+    return <Tag look="fail">error</Tag>;
   }
   if (severity === "warning") {
-    return <Badge className={WARNING}>warning</Badge>;
+    return <Tag look="warn">warning</Tag>;
   }
-  return <Badge variant="secondary">{severity}</Badge>;
+  return <Tag>{severity}</Tag>;
 }
 
 export function ReplayBadge() {
   return (
-    <Badge variant="outline" title="This run replayed a recording">
+    <Tag look="outline" title="This run replayed a recording">
       replay
-    </Badge>
+    </Tag>
   );
 }

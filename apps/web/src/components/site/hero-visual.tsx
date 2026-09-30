@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Micro, Panel, RecChip } from "@/components/site/primitives";
+import { Micro, Panel, RecChip } from "@/components/brand/primitives";
 
 const LINES = [
   { seq: 1, end: 2, tool: "get_customer", args: "c-42", ok: true, lane: 0 },

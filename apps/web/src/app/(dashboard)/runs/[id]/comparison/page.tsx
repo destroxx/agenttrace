@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { ApiProblem } from "@/components/api-problem";
 import { SeverityBadge, VerdictBadge } from "@/components/badges";
+import { Micro, Panel, Timecode } from "@/components/brand/primitives";
 import { JsonBlock } from "@/components/json-view";
 import { PageHeader, type Crumb } from "@/components/page-header";
 import { getComparison, getProject, getRun, isUuid, SEVERITIES, type Comparison } from "@/lib/api";
@@ -58,9 +59,10 @@ export default async function ComparisonPage({
 
 function NoReport({ isReplay }: { isReplay: boolean }) {
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-dashed p-6 text-sm">
-      <h2 className="text-base font-semibold">This run has no comparison report</h2>
-      <p className="text-muted-foreground">
+    <section className="bg-grid flex flex-col gap-3 rounded-md border border-dashed border-line-strong p-6 text-[13px] leading-6 sm:p-8">
+      <Micro tone="brand">no report</Micro>
+      <h2 className="font-display text-2xl font-extrabold tracking-[-0.03em]">This run has no comparison report</h2>
+      <p className="max-w-3xl text-muted-foreground">
         {isReplay
           ? "It is a replay, but no report was uploaded for it."
           : "It is not a replay, so there is nothing it was compared against."}{" "}
@@ -74,6 +76,14 @@ function NoReport({ isReplay }: { isReplay: boolean }) {
   );
 }
 
+const LINK = "underline decoration-line-strong underline-offset-4 hover:text-signal hover:decoration-signal";
+
+const SEVERITY_TONE: Record<string, string> = {
+  error: "text-fail",
+  warning: "text-warn",
+  info: "text-foreground",
+};
+
 function Report({ comparison }: { comparison: Comparison }) {
   const { report, verdict } = comparison;
   const findings = report.findings ?? [];
@@ -84,78 +94,95 @@ function Report({ comparison }: { comparison: Comparison }) {
   return (
     <>
       <section
-        className={`flex flex-col gap-2 rounded-lg border p-5 ${
-          passed
-            ? "border-pass/40 bg-pass/10"
-            : "border-destructive/40 bg-destructive/10"
+        className={`flex flex-col gap-4 rounded-md border border-l-4 bg-code p-5 sm:p-6 ${
+          passed ? "border-pass/40 border-l-pass" : "border-fail/40 border-l-fail"
         }`}
       >
-        <div className="flex items-center gap-3">
-          <VerdictBadge verdict={verdict} className="h-6 px-3 text-sm" />
-          <span className="text-base font-medium">
+        <div className="flex flex-wrap items-center gap-4">
+          <VerdictBadge verdict={verdict} className="h-7 px-3 text-xs" />
+          <span className="text-[15px] leading-7">
             {passed
               ? "The replay behaved like its recording."
               : "The replay differs from its recording in ways that fail the policy."}
           </span>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[13px] leading-6 text-muted-foreground">
           Replay{" "}
-          <Link href={`/runs/${comparison.replay_run_id}`} className="font-mono underline underline-offset-4">
+          <Link href={`/runs/${comparison.replay_run_id}`} className={LINK}>
             {shortId(comparison.replay_run_id)}
           </Link>{" "}
           compared with recording{" "}
-          <Link href={`/runs/${comparison.recording_run_id}`} className="font-mono underline underline-offset-4">
+          <Link href={`/runs/${comparison.recording_run_id}`} className={LINK}>
             {shortId(comparison.recording_run_id)}
           </Link>{" "}
           · uploaded {formatTimestamp(comparison.created_at)}
         </p>
       </section>
 
-      <section className="flex flex-wrap gap-3">
-        {SEVERITIES.map((severity) => (
-          <div key={severity} className="flex min-w-28 flex-col gap-1 rounded-lg border px-4 py-3">
-            <span className="text-xs text-muted-foreground">{severity}</span>
-            <span className="text-2xl font-semibold tabular-nums">{bySeverity[severity] ?? 0}</span>
-          </div>
-        ))}
-        {byCode.length > 0 ? (
-          <dl className="flex flex-col justify-center gap-0.5 rounded-lg border px-4 py-3 text-xs">
-            {byCode.map(([code, count]) => (
-              <div key={code} className="flex gap-3">
-                <dt className="font-mono">{code}</dt>
-                <dd className="ml-auto tabular-nums">{count}</dd>
-              </div>
-            ))}
-          </dl>
-        ) : null}
+      <section className="flex flex-col gap-5">
+        <Timecode as="h2" index={1} label="counts" />
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,1.5fr)]">
+          {SEVERITIES.map((severity) => {
+            const count = bySeverity[severity] ?? 0;
+            return (
+              <Panel key={severity}>
+                <div className="flex flex-col gap-2 px-4 py-4">
+                  <Micro>{severity}</Micro>
+                  <span
+                    className={`font-display text-5xl leading-none font-extrabold tabular-nums ${
+                      count === 0 ? "text-muted-foreground" : SEVERITY_TONE[severity]
+                    }`}
+                  >
+                    <span aria-hidden>{String(count).padStart(3, "0")}</span>
+                    <span className="sr-only">{count}</span>
+                  </span>
+                </div>
+              </Panel>
+            );
+          })}
+          {byCode.length > 0 ? (
+            <Panel className="sm:col-span-3 lg:col-span-1">
+              <dl className="flex flex-col gap-1.5 px-4 py-4 text-xs">
+                {byCode.map(([code, count]) => (
+                  <div key={code} className="flex gap-3">
+                    <dt className="min-w-0 break-all">{code}</dt>
+                    <dd className="ml-auto tabular-nums">{count}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Panel>
+          ) : null}
+        </div>
       </section>
 
-      <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">Findings</h2>
+      <section className="flex flex-col gap-5">
+        <Timecode as="h2" index={2} label="findings" />
         {findings.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[13px] text-muted-foreground">
             No findings: the tool calls, their order, the status and the output all matched.
           </p>
         ) : (
-          <ol className="flex flex-col overflow-hidden rounded-lg border">
-            {findings.map((finding, index) => (
-              <li key={index} className="border-t first:border-t-0">
-                <details className="group">
-                  <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted/30 [&::-webkit-details-marker]:hidden">
-                    <span className="inline-block w-3 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden>
-                      ›
-                    </span>
-                    <SeverityBadge severity={finding.severity} />
-                    <code className="text-xs font-medium">{finding.code}</code>
-                    <span className="min-w-0 flex-1 break-words">{finding.message}</span>
-                  </summary>
-                  <div className="border-t bg-muted/10 px-4 py-3">
-                    <JsonBlock value={finding.details} className="rounded-md border" />
-                  </div>
-                </details>
-              </li>
-            ))}
-          </ol>
+          <Panel>
+            <ol className="flex flex-col">
+              {findings.map((finding, index) => (
+                <li key={index} className="border-t first:border-t-0">
+                  <details className="group">
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3 text-[13px] transition-colors hover:bg-card [&::-webkit-details-marker]:hidden">
+                      <span className="inline-block w-3 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden>
+                        ›
+                      </span>
+                      <SeverityBadge severity={finding.severity} />
+                      <code className="text-xs font-medium">{finding.code}</code>
+                      <span className="min-w-0 flex-1 break-words">{finding.message}</span>
+                    </summary>
+                    <div className="border-t bg-background/60 px-4 py-4">
+                      <JsonBlock value={finding.details} className="rounded-md border" />
+                    </div>
+                  </details>
+                </li>
+              ))}
+            </ol>
+          </Panel>
         )}
       </section>
     </>

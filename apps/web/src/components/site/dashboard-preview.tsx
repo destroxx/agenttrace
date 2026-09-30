@@ -2,8 +2,10 @@
  * A static picture of the dashboard's run page, drawn in HTML rather than a
  * screenshot so it stays sharp and themed. The steps are a real trace of
  * `examples/async_support_agent.py` (14 events, sequences 0 to 13); the bars use
- * the same sequence-based geometry as `components/timeline.tsx`.
+ * the same sequence-based geometry and lane colours as `components/timeline.tsx`.
  */
+
+import { LANE_COLOURS } from "@/components/timeline";
 
 const FIRST = 0;
 const LAST = 13;
@@ -23,7 +25,6 @@ const STEPS: Step[] = [
   { kind: "event", seq: 13, name: "agent_end" },
 ];
 
-const LANE = ["bg-foreground/60", "bg-chart-2", "bg-chart-3"];
 const GRID = "grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem_minmax(5rem,11rem)] items-center gap-3";
 
 function Bar({ start, end, colour }: { start: number; end: number; colour: string }) {
@@ -97,7 +98,7 @@ export function DashboardPreview() {
                     ) : null}
                   </span>
                   <span className="text-right font-mono tabular-nums">{step.ms} ms</span>
-                  <Bar start={step.start} end={step.end} colour={LANE[step.lane]} />
+                  <Bar start={step.start} end={step.end} colour={LANE_COLOURS[step.lane]} />
                 </div>
               ),
             )}

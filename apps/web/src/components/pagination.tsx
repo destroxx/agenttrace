@@ -16,26 +16,27 @@ export function Pagination({
   if (pages <= 1) {
     return null;
   }
-  const link = "rounded-md border px-3 py-1.5 hover:bg-muted";
-  const disabled = "rounded-md border px-3 py-1.5 text-muted-foreground opacity-50";
+  const box = "inline-flex h-10 items-center rounded-md border px-4";
+  const link = `${box} border-line-strong text-foreground transition-colors hover:border-signal hover:text-signal`;
+  const disabled = `${box} text-muted-foreground/60`;
   return (
-    <nav className="flex items-center gap-3 text-sm" aria-label="Pagination">
+    <nav className="flex flex-wrap items-center gap-3 text-[13px]" aria-label="Pagination">
       {page > 1 ? (
         <Link className={link} href={href(page - 1)}>
-          Newer
+          newer
         </Link>
       ) : (
-        <span className={disabled}>Newer</span>
+        <span className={disabled}>newer</span>
       )}
-      <span className="text-muted-foreground">
-        Page {page} of {pages} · {total} total
+      <span className="text-muted-foreground tabular-nums">
+        page {page} of {pages} · {total} total
       </span>
       {page < pages ? (
         <Link className={link} href={href(page + 1)}>
-          Older
+          older
         </Link>
       ) : (
-        <span className={disabled}>Older</span>
+        <span className={disabled}>older</span>
       )}
     </nav>
   );

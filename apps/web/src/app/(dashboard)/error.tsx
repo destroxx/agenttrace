@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { Button } from "@/components/ui/button";
+import { buttonClasses, Display, Micro } from "@/components/brand/primitives";
 
 /**
  * The last resort for a page that threw while rendering.
@@ -22,15 +22,16 @@ export default function Error({
   }, [error]);
 
   return (
-    <section className="flex flex-col gap-3" role="alert">
-      <h2 className="text-lg font-semibold">This page failed to render</h2>
-      <p className="text-sm text-muted-foreground">
+    <section className="flex max-w-3xl flex-col gap-4" role="alert">
+      <Micro tone="fail">render error</Micro>
+      <Display className="text-3xl md:text-4xl">This page failed to render</Display>
+      <p className="text-[13px] leading-6 text-muted-foreground">
         {error.message}
         {error.digest ? ` (digest ${error.digest}, see the server log)` : null}
       </p>
-      <Button variant="outline" className="self-start" onClick={() => retry()}>
+      <button type="button" className={`${buttonClasses("primary")} self-start`} onClick={() => retry()}>
         Try again
-      </Button>
+      </button>
     </section>
   );
 }
