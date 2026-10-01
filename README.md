@@ -4,6 +4,10 @@
 
 Record-and-replay regression testing for AI agents.
 
+**Live demo:** <https://agenttrace-demo.vercel.app> — the site, and a
+[dashboard](https://agenttrace-demo.vercel.app/projects) holding one recording
+replayed against four agent versions, with their PASS/FAIL reports.
+
 ## The problem
 
 An AI agent is only partly its own code. The rest is the tools it calls —
