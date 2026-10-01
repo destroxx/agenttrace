@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Literal
-from urllib.parse import quote_plus
+from urllib.parse import parse_qsl, quote_plus, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -23,12 +23,31 @@ Environment = Literal["local", "ci", "staging", "production"]
 _SYNC_PREFIXES = ("postgresql+psycopg://", "postgresql+psycopg2://", "postgresql://")
 
 
+# libpq query options that asyncpg does not take as keywords. Managed
+# providers put them in every DSN they hand out -- Neon's carries
+# `sslmode=require&channel_binding=require` -- and SQLAlchemy passes query
+# options straight through, so asyncpg would refuse to connect at the first
+# query. `sslmode` has an asyncpg spelling, `ssl`; channel binding has none
+# (asyncpg negotiates SCRAM itself), so it is dropped.
+_LIBPQ_RENAMED = {"sslmode": "ssl"}
+_LIBPQ_DROPPED = frozenset({"channel_binding"})
+
+
 def _as_async_dsn(url: str) -> str:
-    """Coerce a PostgreSQL DSN onto the asyncpg driver."""
+    """Coerce a PostgreSQL DSN onto the asyncpg driver, query options included."""
     for prefix in _SYNC_PREFIXES:
         if url.startswith(prefix):
-            return "postgresql+asyncpg://" + url[len(prefix) :]
-    return url
+            url = "postgresql+asyncpg://" + url[len(prefix) :]
+            break
+    parts = urlsplit(url)
+    if not parts.query:
+        return url
+    query = [
+        (_LIBPQ_RENAMED.get(key, key), value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+        if key not in _LIBPQ_DROPPED
+    ]
+    return urlunsplit(parts._replace(query=urlencode(query)))
 
 
 class Settings(BaseSettings):
@@ -64,6 +83,15 @@ class Settings(BaseSettings):
         default=None,
         alias="DATABASE_URL",
         description="Full database DSN. Overrides the POSTGRES_* settings.",
+    )
+    # A direct (unpooled) DSN for migrations. Poolers such as Neon's run in
+    # transaction mode, which suits short request queries but not DDL that
+    # takes locks across statements; Neon's Vercel integration injects this
+    # one alongside DATABASE_URL. Unset, migrations use the same DSN as the app.
+    database_url_unpooled: SecretStr | None = Field(
+        default=None,
+        alias="DATABASE_URL_UNPOOLED",
+        description="Direct database DSN for migrations. Defaults to DATABASE_URL.",
     )
 
     # Origins permitted to call the API from a browser. The web app runs on
@@ -124,6 +152,16 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.postgres_user}:{password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def migration_sqlalchemy_url(self) -> str:
+        """The async DSN Alembic connects with: the direct one, when there is one.
+
+        A plain property for the same reason as `sqlalchemy_url`.
+        """
+        if self.database_url_unpooled is not None:
+            return _as_async_dsn(self.database_url_unpooled.get_secret_value())
+        return self.sqlalchemy_url
 
 
 @lru_cache(maxsize=1)

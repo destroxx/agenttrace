@@ -28,7 +28,12 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-config.set_main_option("sqlalchemy.url", get_settings().sqlalchemy_url)
+# The direct DSN, when the app's own goes through a pooler (see config.py).
+# Percent signs are doubled because Alembic's config is an INI file, where a
+# lone % starts interpolation -- and a URL-encoded password is full of them.
+config.set_main_option(
+    "sqlalchemy.url", get_settings().migration_sqlalchemy_url.replace("%", "%%")
+)
 
 
 def run_migrations_offline() -> None:

@@ -146,3 +146,56 @@ def test_admin_key_hash_must_be_a_lowercase_sha256(given: str) -> None:
 
     assert "ADMIN_KEY_SHA256 must be" in str(caught.value)
     assert given not in str(caught.value)
+
+
+NEON_DSN = (
+    "postgresql://owner:pw@ep-calm-sun-123456-pooler.us-east-2.aws.neon.tech/neondb"
+    "?sslmode=require&channel_binding=require"
+)
+
+
+def test_a_neon_dsn_becomes_one_asyncpg_accepts() -> None:
+    """asyncpg takes `ssl`, not libpq's `sslmode`, and has no `channel_binding`."""
+    url = _settings(DATABASE_URL=NEON_DSN).sqlalchemy_url
+
+    assert url == (
+        "postgresql+asyncpg://owner:pw@ep-calm-sun-123456-pooler.us-east-2.aws.neon.tech"
+        "/neondb?ssl=require"
+    )
+
+
+def test_the_translated_dsn_reaches_asyncpg_as_keywords_it_takes() -> None:
+    """What the driver is finally called with, not just what the string says."""
+    import inspect
+
+    import asyncpg
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    engine = create_async_engine(_settings(DATABASE_URL=NEON_DSN).sqlalchemy_url)
+    _, kwargs = engine.dialect.create_connect_args(engine.url)
+    accepted = inspect.signature(asyncpg.connect).parameters
+
+    assert kwargs["ssl"] == "require"
+    assert set(kwargs) <= set(accepted), set(kwargs) - set(accepted)
+
+
+def test_other_query_options_survive_the_translation() -> None:
+    url = _settings(
+        DATABASE_URL="postgresql://u:p@h/d?application_name=agenttrace&sslmode=verify-full"
+    ).sqlalchemy_url
+
+    assert url == "postgresql+asyncpg://u:p@h/d?application_name=agenttrace&ssl=verify-full"
+
+
+def test_migrations_use_the_direct_dsn_when_there_is_one() -> None:
+    pooled = _settings(DATABASE_URL=NEON_DSN)
+    both = _settings(
+        DATABASE_URL=NEON_DSN,
+        DATABASE_URL_UNPOOLED=NEON_DSN.replace("-pooler", ""),
+    )
+
+    assert pooled.migration_sqlalchemy_url == pooled.sqlalchemy_url
+    assert "-pooler" in both.sqlalchemy_url
+    assert "-pooler" not in both.migration_sqlalchemy_url
+    assert both.migration_sqlalchemy_url.endswith("/neondb?ssl=require")
+    assert "pw" not in repr(both)

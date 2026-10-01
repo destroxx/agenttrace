@@ -9,7 +9,7 @@
  * one, so a thrown "cannot reach the API" would not even be readable.
  */
 
-import { apiBaseUrl } from "@/lib/config";
+import { apiBase } from "@/lib/config";
 
 // A dashboard page waits on these before it can render anything, so a hung
 // API must fail fast rather than hold the request open.
@@ -123,7 +123,7 @@ export type ApiResult<T> = { ok: true; data: T } | ({ ok: false } & ApiFailure);
 async function get<T>(path: string): Promise<ApiResult<T>> {
   let response: Response;
   try {
-    response = await fetch(`${apiBaseUrl}${path}`, {
+    response = await fetch(`${apiBase()}${path}`, {
       // Runs change underneath the dashboard; never serve a cached page of them.
       cache: "no-store",
       signal: AbortSignal.timeout(TIMEOUT_MS),

@@ -5,7 +5,7 @@
  * component only deals with rendering.
  */
 
-import { apiBaseUrl } from "@/lib/config";
+import { apiBase } from "@/lib/config";
 
 export type ComponentStatus = "up" | "down";
 export type OverallStatus = "ok" | "degraded";
@@ -35,7 +35,7 @@ export type HealthResult =
  */
 export async function fetchHealth(signal?: AbortSignal): Promise<HealthResult> {
   try {
-    const response = await fetch(`${apiBaseUrl}/health`, {
+    const response = await fetch(`${apiBase()}/health`, {
       signal,
       cache: "no-store",
     });
