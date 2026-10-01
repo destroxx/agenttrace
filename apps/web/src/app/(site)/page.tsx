@@ -391,17 +391,24 @@ function Quickstart() {
         "# set the same POSTGRES_PASSWORD in apps/api/.env",
         "python3.12 -m venv .venv && source .venv/bin/activate",
         'pip install -e "apps/api[dev]" -e "packages/python-sdk[dev]"',
-        "cd apps/api && alembic upgrade head && uvicorn app.main:app --reload",
+        "cd apps/api && alembic upgrade head",
+        "python -m scripts.new_admin_key   # put its ADMIN_KEY_SHA256 line in .env",
+        "uvicorn app.main:app --reload",
       ],
     },
     {
-      title: "Create a project, then record and replay",
+      title: "Create a project and its key, then record and replay",
       lines: [
         "# in a second shell, from the repo root",
         "source .venv/bin/activate",
+        "ADMIN=\"Authorization: Bearer <the admin key>\"",
         "export AGENTTRACE_PROJECT_ID=$(curl -s -X POST localhost:8000/api/v1/projects \\",
-        "  -H 'content-type: application/json' -d '{\"name\":\"Demo\"}' \\",
+        "  -H \"$ADMIN\" -H 'content-type: application/json' -d '{\"name\":\"Demo\"}' \\",
         "  | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"id\"])')",
+        "export AGENTTRACE_API_KEY=$(curl -s -X POST \\",
+        "  localhost:8000/api/v1/projects/$AGENTTRACE_PROJECT_ID/keys \\",
+        "  -H \"$ADMIN\" -H 'content-type: application/json' -d '{}' \\",
+        "  | python3 -c 'import sys,json; print(json.load(sys.stdin)[\"key\"])')",
         "python examples/async_support_agent.py",
         "python examples/replay_demo.py",
       ],
@@ -419,7 +426,7 @@ function Quickstart() {
     <Section
       id="quickstart"
       title="Your first recording, replayed and judged."
-      lead="You need Python 3.12+, Node 20+ and Docker. The demo agent is scripted, so there is no LLM and no API key. With AGENTTRACE_PROJECT_ID set, the two examples fill that project with a recording, its replays and their comparison reports."
+      lead="You need Python 3.12+, Node 20+ and Docker. The demo agent is scripted, so there is no LLM to pay for. With AGENTTRACE_PROJECT_ID and that project's key set, the two examples fill the project with a recording, its replays and their comparison reports."
       band
     >
       <ol className="grid gap-5 md:grid-cols-2">

@@ -1,9 +1,10 @@
 """Domain errors raised by the service layer.
 
 Services know nothing about HTTP. They raise these, and `app/main.py`
-registers the handlers that turn them into responses. Three classes, not a
-framework: one for "it isn't there", one for "it is, but not like that", and
-one for "the body points at something it may not".
+registers the handlers that turn them into responses. Five classes, not a
+framework: one for "it isn't there", one for "it is, but not like that", one
+for "the body points at something it may not", one for "who are you?" and one
+for "not with that key".
 """
 
 from __future__ import annotations
@@ -44,3 +45,17 @@ class UnprocessableError(AgentTraceError):
     def __init__(self, field: str, detail: str) -> None:
         self.field = field
         super().__init__(detail)
+
+
+class AuthenticationError(AgentTraceError):
+    """The request carries no API key, or one that is unknown or revoked.
+
+    One message for all three, so a caller probing keys learns nothing about
+    which keys exist or once existed.
+    """
+
+    detail = "A valid API key is required: send it as 'Authorization: Bearer <key>'."
+
+
+class PermissionDeniedError(AgentTraceError):
+    """The key is valid, but not for what it was used on."""

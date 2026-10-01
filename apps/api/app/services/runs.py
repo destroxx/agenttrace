@@ -15,6 +15,7 @@ from app.models.event import Event
 from app.models.project import Project
 from app.models.run import Run, RunStatus
 from app.schemas.run import RunComplete, RunCreate, RunIngest
+from app.services.api_keys import Caller
 from app.services.exceptions import ConflictError, NotFoundError, UnprocessableError
 from app.services.pagination import Pagination
 
@@ -49,11 +50,12 @@ class RunService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, project_id: uuid.UUID, data: RunCreate) -> Run:
+    async def create(self, project_id: uuid.UUID, data: RunCreate, caller: Caller) -> Run:
         """Start a run against a project.
 
         A run always begins as `running`; the caller cannot choose otherwise.
         """
+        caller.require_project(project_id)
         if await self._session.get(Project, project_id) is None:
             raise NotFoundError("Project", project_id)
 
@@ -130,7 +132,7 @@ class RunService:
         )
         return result.all(), int(total or 0)
 
-    async def ingest(self, project_id: uuid.UUID, data: RunIngest) -> Run:
+    async def ingest(self, project_id: uuid.UUID, data: RunIngest, caller: Caller) -> Run:
         """Store one already-finished run and its whole trace at once.
 
         This is the SDK's upload path: it buffers an execution in memory and
@@ -149,6 +151,7 @@ class RunService:
         unknown id and a foreign one get the same answer, so the error does
         not reveal which run ids exist elsewhere.
         """
+        caller.require_project(project_id)
         if await self._session.get(Project, project_id) is None:
             raise NotFoundError("Project", project_id)
         if data.replay_of_run_id is not None:
@@ -200,7 +203,7 @@ class RunService:
             raise
         return run
 
-    async def complete(self, run_id: uuid.UUID, data: RunComplete) -> Run:
+    async def complete(self, run_id: uuid.UUID, data: RunComplete, caller: Caller) -> Run:
         """Finish a run, recording its output and final status.
 
         A run that has already finished is not re-completed: overwriting the
@@ -215,6 +218,7 @@ class RunService:
         run = await self._session.get(Run, run_id, with_for_update=True)
         if run is None:
             raise NotFoundError("Run", run_id)
+        caller.require_project(run.project_id)
         if run.is_terminal:
             raise ConflictError(
                 f"Run {run_id} already finished with status {run.status!r}."

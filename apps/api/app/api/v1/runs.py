@@ -12,7 +12,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 
-from app.api.dependencies import PaginationDep, RunServiceDep
+from app.api.dependencies import WRITE_RESPONSES, CallerDep, PaginationDep, RunServiceDep
 from app.models.run import RunStatus
 from app.schemas.common import Page
 from app.schemas.run import RunComplete, RunCreate, RunIngest, RunResponse, RunSummary
@@ -27,13 +27,16 @@ NOT_FOUND = {status.HTTP_404_NOT_FOUND: {"description": "No such run."}}
     response_model=RunResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Start a run",
-    responses={status.HTTP_404_NOT_FOUND: {"description": "No such project."}},
+    responses={
+        **WRITE_RESPONSES,
+        status.HTTP_404_NOT_FOUND: {"description": "No such project."},
+    },
 )
 async def create_run(
-    project_id: uuid.UUID, payload: RunCreate, service: RunServiceDep
+    project_id: uuid.UUID, payload: RunCreate, service: RunServiceDep, caller: CallerDep
 ) -> RunResponse:
     """Start a run. Its status is always `running` on creation."""
-    run = await service.create(project_id, payload)
+    run = await service.create(project_id, payload, caller)
     return RunResponse.model_validate(run)
 
 
@@ -43,6 +46,7 @@ async def create_run(
     status_code=status.HTTP_201_CREATED,
     summary="Upload one finished run with its whole trace",
     responses={
+        **WRITE_RESPONSES,
         status.HTTP_404_NOT_FOUND: {"description": "No such project."},
         status.HTTP_409_CONFLICT: {"description": "That run id is already stored."},
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
@@ -53,7 +57,7 @@ async def create_run(
     },
 )
 async def ingest_run(
-    project_id: uuid.UUID, payload: RunIngest, service: RunServiceDep
+    project_id: uuid.UUID, payload: RunIngest, service: RunServiceDep, caller: CallerDep
 ) -> RunResponse:
     """Store a finished run and all of its events in one transaction.
 
@@ -63,7 +67,7 @@ async def ingest_run(
     an agent that stopped early. The client supplies the run id, which makes a
     retried upload a conflict rather than a duplicate.
     """
-    run = await service.ingest(project_id, payload)
+    run = await service.ingest(project_id, payload, caller)
     return RunResponse.model_validate(run)
 
 
@@ -120,13 +124,14 @@ async def get_run(run_id: uuid.UUID, service: RunServiceDep) -> RunResponse:
     response_model=RunResponse,
     summary="Finish a run",
     responses={
+        **WRITE_RESPONSES,
         **NOT_FOUND,
         status.HTTP_409_CONFLICT: {"description": "The run has already finished."},
     },
 )
 async def complete_run(
-    run_id: uuid.UUID, payload: RunComplete, service: RunServiceDep
+    run_id: uuid.UUID, payload: RunComplete, service: RunServiceDep, caller: CallerDep
 ) -> RunResponse:
     """Record a run's output and final status, and stamp `completed_at`."""
-    run = await service.complete(run_id, payload)
+    run = await service.complete(run_id, payload, caller)
     return RunResponse.model_validate(run)

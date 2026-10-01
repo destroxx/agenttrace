@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.project import Project
 from app.models.run import Run
 from app.schemas.project import ProjectCreate
+from app.services.api_keys import Caller
 from app.services.exceptions import NotFoundError
 from app.services.pagination import Pagination
 
@@ -22,8 +23,10 @@ class ProjectService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, data: ProjectCreate) -> Project:
-        """Persist a new project."""
+    async def create(self, data: ProjectCreate, caller: Caller) -> Project:
+        """Persist a new project. Only the admin key may: a project key is
+        scoped to a project, and making new ones is outside any scope."""
+        caller.require_admin()
         project = Project(name=data.name, description=data.description)
         self._session.add(project)
         await self._session.flush()

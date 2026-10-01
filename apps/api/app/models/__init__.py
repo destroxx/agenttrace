@@ -5,9 +5,10 @@ Alembic autogenerate compares against. `app/migrations/env.py` imports it for
 exactly that reason.
 """
 
+from app.models.api_key import ApiKey
 from app.models.comparison import Comparison
 from app.models.event import Event, EventType
 from app.models.project import Project
 from app.models.run import Run, RunStatus
 
-__all__ = ["Comparison", "Event", "EventType", "Project", "Run", "RunStatus"]
+__all__ = ["ApiKey", "Comparison", "Event", "EventType", "Project", "Run", "RunStatus"]

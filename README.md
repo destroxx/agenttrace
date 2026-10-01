@@ -45,7 +45,7 @@ mean the same thing — semantic comparison — is not built yet.
 | | Milestone | What it means |
 | --- | --- | --- |
 | ✅ | Foundation | Monorepo, FastAPI service, Postgres via Compose, Next.js app |
-| ✅ | Data model & REST API | `Project ──< Run ──< Event`, `Comparison`, 14 endpoints, Alembic migrations |
+| ✅ | Data model & REST API | `Project ──< Run ──< Event`, `Comparison`, `ApiKey`, 17 endpoints, Alembic migrations |
 | ✅ | Frozen terminal runs | A finished run rejects new events; row lock serialises close vs. append |
 | ✅ | One-request ingest | A whole finished run and its trace in a single transaction |
 | ✅ | Python SDK recorder | Async/sync tracing, `@tracer.tool`, end-of-run upload, record-time snapshots |
@@ -55,7 +55,8 @@ mean the same thing — semantic comparison — is not built yet.
 | ✅ | Regression suites | Recordings committed in your repo, a `suite.toml`, and `agenttrace run-suite` — offline, exit 1 on any FAIL |
 | ✅ | CI integration | GitHub Actions runs every check and the regression suite on each push and pull request |
 | ✅ | Dashboard | Read-only: projects, runs with verdicts, a run's timeline and its comparison report |
-| ⬜ | Auth, billing, queues, deployment | Not started; the SDK sends an API key the API does not check |
+| ✅ | API keys | Every write needs a key; a project key writes to its own project only; keys stored as hashes; reads stay public |
+| ⬜ | Billing, queues, deployment | Not started |
 
 ## Key design decisions
 
@@ -134,10 +135,25 @@ cd apps/api
 alembic upgrade head
 ```
 
-### 4. Start the API
+### 4. Make an admin key and start the API
+
+Writes need an API key. The admin key creates projects and issues each project
+its own key; the API is configured with its SHA-256, never the key itself:
 
 ```bash
 cd apps/api
+python -m scripts.new_admin_key
+```
+
+```
+admin key (keep it secret):   at_Xq3…
+ADMIN_KEY_SHA256=54457bde…
+```
+
+Add the `ADMIN_KEY_SHA256=…` line to `apps/api/.env`, keep the key itself
+somewhere safe (a password manager), then start the API:
+
+```bash
 uvicorn app.main:app --reload
 ```
 
@@ -146,18 +162,25 @@ uvicorn app.main:app --reload
 
 ### 5. Record your first run
 
-With the API running, in a second shell:
+With the API running, in a second shell, create a project with the admin key
+and issue it a project key — the key the SDK uploads with:
 
 ```bash
 source .venv/bin/activate
+ADMIN_KEY=at_Xq3…                      # the admin key from step 4
 
-PROJECT=$(curl -s -X POST localhost:8000/api/v1/projects \
-  -H 'content-type: application/json' \
+export AGENTTRACE_PROJECT_ID=$(curl -s -X POST localhost:8000/api/v1/projects \
+  -H "Authorization: Bearer $ADMIN_KEY" -H 'content-type: application/json' \
   -d '{"name":"Demo"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
-export AGENTTRACE_PROJECT_ID=$PROJECT
+export AGENTTRACE_API_KEY=$(curl -s -X POST localhost:8000/api/v1/projects/$AGENTTRACE_PROJECT_ID/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" -H 'content-type: application/json' \
+  -d '{"name":"laptop"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["key"])')
 
 python examples/async_support_agent.py
 ```
+
+The project key is shown only in that response; the API keeps its hash. It can
+write to this project and nowhere else.
 
 The demo agent is scripted — no LLM, no API key. It calls four tools, two of
 them in parallel, and prints the trace it uploaded:
@@ -306,7 +329,7 @@ replay result, and `report.to_dict()` is a stable, JSON-serialisable form.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `AGENTTRACE_API_URL` | `http://localhost:8000` | Where the API lives |
-| `AGENTTRACE_API_KEY` | _unset_ | Sent as a bearer token; **the API does not check it yet** |
+| `AGENTTRACE_API_KEY` | _unset_ | A project key for `AGENTTRACE_PROJECT_ID`, sent as a bearer token; uploads without one get `401` |
 | `AGENTTRACE_PROJECT_ID` | _unset_ | The project runs are uploaded to |
 | `AGENTTRACE_TIMEOUT` | `5` | Seconds to wait for one upload |
 
@@ -386,24 +409,36 @@ Full SDK documentation, including known limitations, is in
 All endpoints are under `/api/v1`, except `/health`, which is unversioned
 because it describes the process rather than the API contract.
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/health` | API and database health; `503` when degraded |
-| POST | `/api/v1/projects` | Create a project |
-| GET | `/api/v1/projects` | List projects (paginated) |
-| GET | `/api/v1/projects/{project_id}` | Get a project |
-| POST | `/api/v1/projects/{project_id}/runs` | Start a run (status `running`) |
-| POST | `/api/v1/projects/{project_id}/runs/ingest` | Upload one finished run and its whole trace |
-| GET | `/api/v1/projects/{project_id}/runs` | List a project's runs with event count, duration and verdict (paginated, `?status=`) |
-| GET | `/api/v1/runs/{run_id}` | Get a run |
-| POST | `/api/v1/runs/{run_id}/complete` | Record output and final status |
-| POST | `/api/v1/runs/{run_id}/events` | Append an event |
-| GET | `/api/v1/runs/{run_id}/events` | List events ordered by `sequence` |
-| POST | `/api/v1/runs/{run_id}/comparison` | Store the comparison report for a replay run |
-| GET | `/api/v1/runs/{run_id}/comparison` | Get a replay run's comparison report |
-| GET | `/api/v1/projects/{project_id}/comparisons` | List a project's reports, counts only (paginated) |
+**Authentication.** Reads are public. Every write needs an API key, sent as
+`Authorization: Bearer <key>`. The **Key** column says which: *project* means a
+key issued for that project (the admin key works too); *admin* means the admin
+key only. A project key is stored as a SHA-256 hash and shown once, when it is
+issued; the admin key is configured as `ADMIN_KEY_SHA256` and is never stored
+at all.
 
-Errors: `404` for a missing project or run; `409` for a duplicate event
+| Method | Path | Key | Purpose |
+| --- | --- | --- | --- |
+| GET | `/health` | — | API and database health; `503` when degraded |
+| POST | `/api/v1/projects` | admin | Create a project |
+| GET | `/api/v1/projects` | — | List projects (paginated) |
+| GET | `/api/v1/projects/{project_id}` | — | Get a project |
+| POST | `/api/v1/projects/{project_id}/keys` | admin | Issue a project key; the response is the only place it appears |
+| GET | `/api/v1/projects/{project_id}/keys` | admin | List a project's keys by prefix, revoked ones included |
+| DELETE | `/api/v1/keys/{key_id}` | admin | Revoke a key; it gets `401` from the next request on |
+| POST | `/api/v1/projects/{project_id}/runs` | project | Start a run (status `running`) |
+| POST | `/api/v1/projects/{project_id}/runs/ingest` | project | Upload one finished run and its whole trace |
+| GET | `/api/v1/projects/{project_id}/runs` | — | List a project's runs with event count, duration and verdict (paginated, `?status=`) |
+| GET | `/api/v1/runs/{run_id}` | — | Get a run |
+| POST | `/api/v1/runs/{run_id}/complete` | project | Record output and final status |
+| POST | `/api/v1/runs/{run_id}/events` | project | Append an event |
+| GET | `/api/v1/runs/{run_id}/events` | — | List events ordered by `sequence` |
+| POST | `/api/v1/runs/{run_id}/comparison` | project | Store the comparison report for a replay run |
+| GET | `/api/v1/runs/{run_id}/comparison` | — | Get a replay run's comparison report |
+| GET | `/api/v1/projects/{project_id}/comparisons` | — | List a project's reports, counts only (paginated) |
+
+Errors: `401` for a missing, unknown or revoked key; `403` for a project key
+used on another project's data, or on an admin route; `404` for a missing
+project or run; `409` for a duplicate event
 sequence, a run that has already finished, an event posted to a finished run, or
 re-uploading a run id that is already stored, or a second report for the same
 run; `422` for a malformed body, a path id that is not a UUID, an ingest
@@ -419,16 +454,17 @@ buffer a whole run:
 ```bash
 API=http://localhost:8000/api/v1
 RUN=d8686012-6e56-483f-bbfc-c69c22d91f52   # from POST /projects/$PROJECT/runs
+AUTH="Authorization: Bearer $AGENTTRACE_API_KEY"
 
-curl -s -X POST $API/runs/$RUN/events -H 'content-type: application/json' \
+curl -s -X POST $API/runs/$RUN/events -H "$AUTH" -H 'content-type: application/json' \
   -d '{"sequence":1,"event_type":"agent_start"}'
-curl -s -X POST $API/runs/$RUN/events -H 'content-type: application/json' \
+curl -s -X POST $API/runs/$RUN/events -H "$AUTH" -H 'content-type: application/json' \
   -d '{"sequence":2,"event_type":"tool_call","call_id":"call_abc123",
        "tool_name":"get_order","arguments":{"order_id":"12345"}}'
-curl -s -X POST $API/runs/$RUN/events -H 'content-type: application/json' \
+curl -s -X POST $API/runs/$RUN/events -H "$AUTH" -H 'content-type: application/json' \
   -d '{"sequence":3,"event_type":"tool_response","call_id":"call_abc123",
        "tool_name":"get_order","response":{"status":"in_transit"},"duration_ms":42}'
-curl -s -X POST $API/runs/$RUN/complete -H 'content-type: application/json' \
+curl -s -X POST $API/runs/$RUN/complete -H "$AUTH" -H 'content-type: application/json' \
   -d '{"output":{"message":"Arriving tomorrow."},"status":"completed"}'
 ```
 
@@ -442,7 +478,9 @@ Optionally load one realistic trace to poke at:
 cd apps/api && python -m scripts.seed_dev_data
 ```
 
-It is not idempotent — each run creates a new project.
+It is not idempotent — each run creates a new project. It writes through the
+services directly, as the admin, so it needs no key: whoever can run it already
+holds the database password.
 
 ## Project structure
 
@@ -484,7 +522,7 @@ ruff check apps/api packages/python-sdk examples
 cd apps/web && npm run lint && npm run build && npx tsc --noEmit
 ```
 
-Currently 103 API tests and 184 SDK tests. The API suite owns a separate database
+Currently 126 API tests and 188 SDK tests. The API suite owns a separate database
 and rolls back every test, so running it never touches development data.
 
 Migrations are reversible; the round trip is worth checking after a schema
@@ -512,6 +550,12 @@ docker compose down -v && docker compose up -d
 `trust`. Only a TCP connection — which is how the API connects — exercises
 authentication.
 
+**Uploads log `failed with status 401` or `403`.** The run was recorded but
+not stored. `401`: `AGENTTRACE_API_KEY` is unset, mistyped or revoked — issue a
+new key with `POST /api/v1/projects/{project_id}/keys`. `403`: the key belongs
+to a different project than `AGENTTRACE_PROJECT_ID`. The agent itself is never
+affected; the log line says which of the two it was.
+
 **`pytest -v` prints no per-test list.** `pyproject.toml` sets `addopts = "-q"`,
 which cancels it. Use `pytest -o addopts="" -v`.
 
@@ -534,7 +578,7 @@ docker compose down -v       # stop and delete the data volume
 | File | Consumed by | Notes |
 | --- | --- | --- |
 | `.env` | `docker-compose.yml` | Postgres database, user, password, host port |
-| `apps/api/.env` | FastAPI, Alembic, tests | `DATABASE_URL` or `POSTGRES_*`, CORS allowlist |
+| `apps/api/.env` | FastAPI, Alembic, tests | `DATABASE_URL` or `POSTGRES_*`, CORS allowlist, `ADMIN_KEY_SHA256` |
 | `apps/web/.env.local` | Next.js | `NEXT_PUBLIC_API_URL` (public, never secret) |
 | `packages/python-sdk/.env` | SDK consumers | `AGENTTRACE_API_URL`, `AGENTTRACE_API_KEY`, `AGENTTRACE_PROJECT_ID`, `AGENTTRACE_TIMEOUT` |
 

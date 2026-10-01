@@ -112,3 +112,37 @@ def test_defaults_target_local_development(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_settings_are_cached() -> None:
     assert get_settings() is get_settings()
+
+
+ADMIN_HASH = "54457bde496c2685f86e003fea7efc48837ffbba25d8693f79bbe41018e90422"
+
+
+def test_admin_key_hash_is_optional_and_kept_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ADMIN_KEY_SHA256", raising=False)
+    assert _settings().admin_key_sha256 is None
+
+    settings = _settings(admin_key_sha256=ADMIN_HASH)
+
+    assert settings.admin_key_sha256 is not None
+    assert settings.admin_key_sha256.get_secret_value() == ADMIN_HASH
+    assert ADMIN_HASH not in repr(settings)
+    assert ADMIN_HASH not in str(settings.model_dump())
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        "at_a-pasted-key-instead-of-its-hash",
+        ADMIN_HASH.upper(),
+        ADMIN_HASH[:-1],
+        ADMIN_HASH + "0",
+    ],
+    ids=["a-key", "uppercase", "too-short", "too-long"],
+)
+def test_admin_key_hash_must_be_a_lowercase_sha256(given: str) -> None:
+    """Pasting the key itself would otherwise leave the API with no admin, silently."""
+    with pytest.raises(ValidationError) as caught:
+        _settings(admin_key_sha256=given)
+
+    assert "ADMIN_KEY_SHA256 must be" in str(caught.value)
+    assert given not in str(caught.value)

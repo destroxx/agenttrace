@@ -10,10 +10,11 @@ deterministic tool-call matching, a deterministic comparison of a replay
 against its recording (pass/fail with findings), storage of those reports, a
 read-only Next.js dashboard over projects, runs, traces and reports, and
 regression suites kept in the developer's repo, run by the `agenttrace` CLI,
-and a GitHub Actions workflow that runs every check and the suite.
+a GitHub Actions workflow that runs every check and the suite, and API keys
+that guard every write.
 
 Explicitly **not** built: semantic (LLM-judged) comparison, the LLM matching
-fallback, evaluation, a PyPI release, authentication, billing, queues,
+fallback, evaluation, a PyPI release, user accounts, billing, queues,
 deployment, AWS and Kubernetes.
 
 ## Repository layout
@@ -44,9 +45,10 @@ service layer never imports FastAPI.
 | Config | `app/config.py` | The only module that reads the environment. |
 
 A route resolves a service, calls one method, and converts the result into a
-response schema. Services raise `NotFoundError`, `ConflictError` or
-`UnprocessableError`; the handlers registered in `app/main.py` turn those into
-`404`, `409` and `422`. No handler translates errors itself, and no service
+response schema. Services raise `NotFoundError`, `ConflictError`,
+`UnprocessableError`, `AuthenticationError` or `PermissionDeniedError`; the
+handlers registered in `app/main.py` turn those into `404`, `409`, `422`, `401`
+and `403`. No handler translates errors itself, and no service
 knows what an HTTP status code is.
 
 `UnprocessableError` exists for body rules that need the database — today,
@@ -60,8 +62,9 @@ rather than a `404` that would read as "your URL is wrong".
 
 ```
 Project ──< Run ──< Event
-             │
-             └──? Comparison      (a replay run's report; at most one)
+   │         │
+   │         └──? Comparison      (a replay run's report; at most one)
+   └──< ApiKey                    (stored as a hash; writes to this project only)
 ```
 
 | Table | Key columns | Notes |
@@ -70,6 +73,7 @@ Project ──< Run ──< Event
 | `runs` | `id`, `project_id`, `agent_name`, `agent_version`, `input`, `output`, `metadata`, `status`, `started_at`, `completed_at`, `replay_of_run_id` | Owns events; a replay points at its recording |
 | `events` | `id`, `run_id`, `sequence`, `event_type`, `tool_name`, `arguments`, `response`, `duration_ms` | One step of a run |
 | `comparisons` | `id`, `replay_run_id`, `recording_run_id`, `verdict`, `report`, `created_at` | The SDK's report on one replay |
+| `api_keys` | `id`, `project_id`, `name`, `prefix`, `key_hash`, `created_at`, `revoked_at` | A project key; the key itself is never stored |
 
 Relationships navigate both ways: `project.runs`, `run.project`, `run.events`,
 `event.run`. `Run.events` carries `order_by="Event.sequence"`, so an eagerly
@@ -93,6 +97,9 @@ silently blocking.
 | `ix_comparisons_recording_run_id` | Find the reports about a recording |
 | `fk_comparisons_*_runs` | Both runs must exist; `ON DELETE CASCADE` on each |
 | `ck_comparisons_verdict_valid` | `verdict` must be `pass` or `fail` |
+| `uq_api_keys_key_hash` | **Unique.** Authentication is one lookup by hash, and this index is it |
+| `ix_api_keys_project_id` | List a project's keys |
+| `fk_api_keys_project_id_projects` | `ON DELETE CASCADE`: a key for a deleted project can write nowhere |
 
 There is deliberately no standalone index on `events.sequence`. A sequence
 number is meaningless outside its run, so every real query filters on `run_id`
@@ -459,12 +466,73 @@ list also takes `?status=`.
 its report; it creates, edits and deletes nothing. Every write in AgentTrace
 comes from the SDK, next to the agent, and the recordings are fixtures whose
 value is that nothing changes them after the fact. A dashboard that could edit
-a run or a verdict would be a second, unaudited way to rewrite history, and
-without authentication anyone who can reach it could do so.
+a run or a verdict would be a second, unaudited way to rewrite history — and
+it would need its own login, where a read-only one needs none.
 
 **The dashboard is always dark**, whatever the OS theme, like the marketing
 site: one brand from the site to the app, and one theme instead of two halves
 the surface to design and check.
+
+## Authentication
+
+Every write needs an API key, sent as `Authorization: Bearer <key>`; every read
+is public. The reads are what a visitor to a demo deployment browses — the
+dashboard is read-only and calls only GETs — and the writes are what must not
+be forged, because a recording is a test fixture whose value is that nobody
+can quietly change it.
+
+**Two kinds of key.** A *project key* is issued for one project and may write
+to that project only. The *admin key* creates projects and issues, lists and
+revokes project keys; it may also write anywhere. Scoping keys to projects is
+the point: a key copied out of one agent's environment or CI log cannot touch
+any other project's recordings or verdicts.
+
+**Only hashes are kept.** A project key exists in exactly one place — the
+response that issued it — and the database stores its SHA-256 plus an
+11-character display prefix (`at_` and eight characters) to tell keys apart.
+The admin key is not stored at all: the API is configured with
+`ADMIN_KEY_SHA256`, so reading the environment, a database dump or a log yields
+nothing that can be sent back. `python -m scripts.new_admin_key` makes a key
+and prints its hash. Settings reject anything but a 64-character lowercase hex
+digest, so pasting the key itself fails at startup rather than leaving the API
+with no admin.
+
+**SHA-256, not bcrypt.** Password hashes are slow on purpose, because passwords
+are guessable. These keys are 256 random bits from `secrets.token_urlsafe`;
+there is no dictionary to try, so a slow hash would only make every request
+slower. A fast hash also makes authentication a single indexed lookup
+(`uq_api_keys_key_hash`). The admin hash is compared with
+`hmac.compare_digest`; project keys are found by the hash of what was sent, so
+the lookup never touches any real key's bytes in a way timing could reveal.
+
+**Where the check happens.** `get_caller` (`app/api/dependencies.py`) turns the
+header into a `Caller` — a project id, or none for the admin — and every write
+route passes it to its service. The service checks it against the project the
+write *really* touches: for `/runs/{run_id}/…` routes that is the run's
+project, which only the service, having loaded the run, knows. Reads take no
+caller at all, so a new GET is public unless someone deliberately adds one.
+
+**What a caller learns.**
+- `401` for no key, an unknown key and a revoked key alike, with one message
+  and `WWW-Authenticate: Bearer`, so probing reveals nothing about which keys
+  exist or once did.
+- `401` comes before body validation: an unauthenticated caller is not told
+  what a valid body would look like. (A body that is not JSON at all is
+  rejected by FastAPI before any dependency runs; that `422` reveals nothing.)
+- `403` for a valid key used on another project, or a project key on an admin
+  route. The key's scope is checked before the project's existence, so a
+  project key cannot use `404` versus `403` to discover other project ids.
+
+**Revoking keeps the row.** `DELETE /keys/{id}` sets `revoked_at` and the key
+gets `401` from the next request on; the list keeps showing it, so which key
+was used and when it stopped is still visible. Revoking twice keeps the first
+timestamp.
+
+**The SDK needed no change to authenticate** — it already sent
+`AGENTTRACE_API_KEY` as a bearer token. It now names the fix when an upload is
+refused: a `401` logs "set AGENTTRACE_API_KEY to a valid key for this project",
+a `403` that the key belongs to a different project. Recording still never
+raises; the agent finishes normally either way.
 
 ## Regression suites
 
@@ -486,7 +554,8 @@ for three reasons. CI must give the same verdict for the same commit, and a
 suite fetched from a service could change underneath a commit that did not.
 A policy change — a severity raised, an output path ignored — changes what
 counts as a regression, so it should go through code review like any other
-test change. And there is no deployed API or authentication for CI to reach.
+test change. And a suite that runs offline needs no deployed API and no key —
+so no secret in CI.
 Server-side datasets would suit a hosted, multi-user product; if they come,
 they will sync into the repo rather than replace it.
 
@@ -601,8 +670,9 @@ replay.
 **No request-size limit on ingest.** `MAX_INGEST_EVENTS` caps the number of
 events at 10,000, but nothing caps the bytes, so a single event with a huge
 tool response can still make an arbitrarily large request. The limit belongs at
-the proxy rather than in application code, and is planned for Phase 9
-(deployment); until then a local deployment is trusting its own callers.
+the proxy rather than in application code, and is planned for the deployment
+phase. An API key limits who can write, not how much: until then, every key
+holder is trusted not to send an oversized run.
 
 **A hard process kill loses the in-flight run.** Nothing is sent until the run
 ends, so `SIGKILL`, a power loss or a crashed interpreter takes the whole trace
@@ -611,9 +681,16 @@ and leaves partially stored traces behind, which replay cannot distinguish from
 an agent that legitimately stopped early. Losing a recording is recoverable;
 trusting a truncated one is not.
 
-**No authentication.** The SDK sends `AGENTTRACE_API_KEY` as a bearer token and
-the API does not check it. Anyone who can reach the API can read or write any
-project. This is fine for a local stack and unacceptable for a shared one.
+**Reads are public.** Anyone who can reach the API can read every project's
+runs, traces and reports. That is the point of a demo deployment and wrong for
+private data; per-project read keys would be the next step, and the dashboard
+would then need a server-side key of its own.
+
+**Keys are simple.** They do not expire, record when they were last used, or
+rotate themselves; there is one admin key, and changing it means redeploying
+with a new `ADMIN_KEY_SHA256`. Failed authentication is not rate-limited —
+guessing a 256-bit key is hopeless, but a flood of attempts still costs a
+query each.
 
 **The upload timeout is per socket operation.** `AGENTTRACE_TIMEOUT` is handed
 to `urllib`, where it bounds each socket read or write rather than the request

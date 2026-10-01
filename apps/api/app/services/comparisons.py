@@ -13,6 +13,7 @@ from app.models.comparison import Comparison
 from app.models.project import Project
 from app.models.run import Run
 from app.schemas.comparison import ComparisonCreate
+from app.services.api_keys import Caller
 from app.services.exceptions import ConflictError, NotFoundError, UnprocessableError
 from app.services.pagination import Pagination
 from app.services.runs import violated_constraint
@@ -36,7 +37,9 @@ class ComparisonService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, replay_run_id: uuid.UUID, data: ComparisonCreate) -> Comparison:
+    async def create(
+        self, replay_run_id: uuid.UUID, data: ComparisonCreate, caller: Caller
+    ) -> Comparison:
         """Store the report for one replay run.
 
         Reports are immutable, like the runs they describe: a second report for
@@ -56,6 +59,7 @@ class ComparisonService:
         replay = await self._session.get(Run, replay_run_id)
         if replay is None:
             raise NotFoundError("Run", replay_run_id)
+        caller.require_project(replay.project_id)
         if data.replay_run_id != replay_run_id:
             raise UnprocessableError(
                 "replay_run_id",

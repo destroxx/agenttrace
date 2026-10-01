@@ -24,6 +24,7 @@ class Request:
 
     path: str
     body: Any
+    authorization: str | None = None
 
 
 @dataclass
@@ -78,7 +79,13 @@ def fake_api(status: int = 201, delay: float = 0.0) -> Iterator[FakeAPI]:
             except ValueError:
                 parsed = None
             with state.lock:
-                state.requests.append(Request(path=self.path, body=parsed))
+                state.requests.append(
+                    Request(
+                        path=self.path,
+                        body=parsed,
+                        authorization=self.headers.get("authorization"),
+                    )
+                )
 
             if state.delay:
                 time.sleep(state.delay)

@@ -18,6 +18,7 @@ error, which is what CI should set.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import subprocess
 import sys
@@ -32,6 +33,11 @@ from sqlalchemy.pool import NullPool
 
 API_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC = Path(sys.executable).parent / "alembic"
+
+# The admin key every test runs with. Not a secret: the API under test only
+# ever sees its hash, set below, exactly as a deployment would configure it.
+ADMIN_KEY = "at_test-admin-key"
+ADMIN_HEADERS = {"Authorization": f"Bearer {ADMIN_KEY}"}
 
 
 def _ensure_credentials() -> None:
@@ -63,6 +69,7 @@ def _pinned_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     # database by an ambient DATABASE_URL.
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("POSTGRES_DB", _test_database_name())
+    monkeypatch.setenv("ADMIN_KEY_SHA256", hashlib.sha256(ADMIN_KEY.encode()).hexdigest())
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -180,7 +187,12 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
 async def api_client(
     app: FastAPI, db_session: AsyncSession
 ) -> AsyncIterator[AsyncClient]:
-    """An HTTP client whose requests run against the transactional test session."""
+    """An HTTP client whose requests run against the transactional test session.
+
+    It sends the admin key, which may write anywhere, so tests about runs,
+    events and reports test those and not authentication. What a missing,
+    wrong or foreign key gets is pinned down in `test_auth_api.py`.
+    """
     from app.db.session import get_session
 
     async def _override() -> AsyncIterator[AsyncSession]:
@@ -188,6 +200,16 @@ async def api_client(
 
     app.dependency_overrides[get_session] = _override
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+    async with AsyncClient(
+        transport=transport, base_url="http://testserver", headers=ADMIN_HEADERS
+    ) as client:
         yield client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+async def anon_client(app: FastAPI, api_client: AsyncClient) -> AsyncIterator[AsyncClient]:
+    """Like `api_client`, on the same test session, but sending no key."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client

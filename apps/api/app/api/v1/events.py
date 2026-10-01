@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, status
 
-from app.api.dependencies import EventServiceDep
+from app.api.dependencies import WRITE_RESPONSES, CallerDep, EventServiceDep
 from app.schemas.event import EventCreate, EventResponse
 
 router = APIRouter(prefix="/runs/{run_id}/events", tags=["events"])
@@ -20,6 +20,7 @@ NOT_FOUND = {status.HTTP_404_NOT_FOUND: {"description": "No such run."}}
     status_code=status.HTTP_201_CREATED,
     summary="Append an event to a run",
     responses={
+        **WRITE_RESPONSES,
         **NOT_FOUND,
         status.HTTP_409_CONFLICT: {
             "description": "The run already has an event at that sequence."
@@ -27,10 +28,10 @@ NOT_FOUND = {status.HTTP_404_NOT_FOUND: {"description": "No such run."}}
     },
 )
 async def create_event(
-    run_id: uuid.UUID, payload: EventCreate, service: EventServiceDep
+    run_id: uuid.UUID, payload: EventCreate, service: EventServiceDep, caller: CallerDep
 ) -> EventResponse:
     """Append one event. `sequence` must be unique within the run."""
-    event = await service.create(run_id, payload)
+    event = await service.create(run_id, payload, caller)
     return EventResponse.model_validate(event)
 
 

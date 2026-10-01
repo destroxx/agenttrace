@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, status
 
-from app.api.dependencies import PaginationDep, ProjectServiceDep
+from app.api.dependencies import ADMIN_RESPONSES, CallerDep, PaginationDep, ProjectServiceDep
 from app.schemas.common import Page
 from app.schemas.project import ProjectCreate, ProjectResponse, ProjectSummary
 
@@ -18,12 +18,17 @@ router = APIRouter(prefix="/projects", tags=["projects"])
     response_model=ProjectResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a project",
+    responses=ADMIN_RESPONSES,
 )
 async def create_project(
-    payload: ProjectCreate, service: ProjectServiceDep
+    payload: ProjectCreate, service: ProjectServiceDep, caller: CallerDep
 ) -> ProjectResponse:
-    """Create a project and return it with its generated id and timestamps."""
-    project = await service.create(payload)
+    """Create a project and return it with its generated id and timestamps.
+
+    Needs the admin key. Issue the project's own key next, with
+    `POST /projects/{project_id}/keys`.
+    """
+    project = await service.create(payload, caller)
     return ProjectResponse.model_validate(project)
 
 
