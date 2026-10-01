@@ -61,6 +61,7 @@ mean the same thing — semantic comparison — is not built yet.
 | ✅ | Dashboard | Read-only: projects, runs with verdicts, a run's timeline and its comparison report |
 | ✅ | API keys | Every write needs a key; a project key writes to its own project only; keys stored as hashes; reads stay public |
 | ✅ | Deployment | One Vercel project: site, dashboard and API on one domain, Neon Postgres, migrations in the production build |
+| ✅ | PyPI package | `uv add agenttrace-replay`; built and smoke-tested in CI, published by pushing an `sdk-v*` tag (trusted publishing, no stored token) |
 | ⬜ | Billing, queues | Not started |
 
 ## Key design decisions
@@ -229,6 +230,14 @@ each run's timeline, and its comparison report. It changes nothing.
 
 ## SDK usage
 
+```bash
+uv add agenttrace-replay       # or: pip install agenttrace-replay
+```
+
+The package is `agenttrace-replay` on PyPI (`agenttrace` there is an unrelated
+project); it is imported as `agenttrace`, and its CLI is `agenttrace`. It needs
+Python 3.12+ and nothing outside the standard library.
+
 The SDK records a whole run in memory and uploads it in one request when the
 run ends.
 
@@ -374,9 +383,10 @@ suites live in the repo rather than on the server.
 ### Run your suite in CI
 
 A suite needs no API, no database and no secrets, so running it in CI is a
-checkout, an install and one command. The SDK is **not on PyPI yet**; install
-it from this repository. Copy this into your repo as
-`.github/workflows/regression-suite.yml`:
+checkout, an install and one command. Add the SDK to your agent's project once
+— `uv add --dev agenttrace-replay` — so the CLI runs next to your agent's own
+dependencies, which `run-suite` needs to import it. Then copy this into your
+repo as `.github/workflows/regression-suite.yml`:
 
 ```yaml
 name: Regression suite
@@ -389,18 +399,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-      - run: pip install -r requirements.txt   # your agent's own dependencies
-      - run: pip install "agenttrace @ git+https://github.com/destroxx/agenttrace@main#subdirectory=packages/python-sdk"
-      - run: agenttrace run-suite path/to/suite.toml --agent-version "${{ github.sha }}"
+      - uses: astral-sh/setup-uv@v10
+      - run: uv sync                 # your project, agenttrace-replay included
+      - run: uv run agenttrace run-suite path/to/suite.toml --agent-version "${{ github.sha }}"
 ```
 
-The job fails on exit `1` (a case regressed) and on exit `2` (the suite could
-not run); the log says which. `@main` follows this repo's latest commit — pin
-a commit SHA instead if you want the SDK to change only when you change it.
-Leave `AGENTTRACE_PROJECT_ID` unset: nothing needs uploading for a verdict.
+With pip instead: `pip install -r requirements.txt agenttrace-replay`, then
+`agenttrace run-suite …`. The job fails on exit `1` (a case regressed) and on
+exit `2` (the suite could not run); the log says which. Your lockfile pins the
+SDK's version, so it changes only when you upgrade it. Leave
+`AGENTTRACE_PROJECT_ID` unset: nothing needs uploading for a verdict.
 
 This repository runs the same way on itself — see
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) and
@@ -564,6 +572,7 @@ agenttrace/
 │   └── python-sdk/       `agenttrace` SDK with the AgentTracer class
 ├── examples/             Runnable SDK examples
 ├── docs/                 Architecture notes and trade-offs
+├── LICENSE               MIT
 ├── docker-compose.yml    Local PostgreSQL
 └── vercel.json           Deployment: the web and api services and their routes
 ```
@@ -655,3 +664,7 @@ docker compose down -v       # stop and delete the data volume
 | `packages/python-sdk/.env` | SDK consumers | `AGENTTRACE_API_URL`, `AGENTTRACE_API_KEY`, `AGENTTRACE_PROJECT_ID`, `AGENTTRACE_TIMEOUT` |
 
 Every file has a committed `.env.example`; real `.env` files are gitignored.
+
+## License
+
+[MIT](LICENSE) © 2026 Tanmay Singh

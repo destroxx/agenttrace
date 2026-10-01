@@ -1,0 +1,76 @@
+# Publish the SDK to PyPI as `agenttrace-replay`.
+#
+# Push a tag `sdk-v<version>`, where <version> is `agenttrace.__version__`:
+#
+#   git tag sdk-v0.1.0 && git push origin sdk-v0.1.0
+#
+# The `sdk-` prefix keeps SDK releases apart from anything else this monorepo
+# might tag. PyPI never accepts the same version twice, so the build job
+# refuses a tag that does not match the code before anything is uploaded.
+name: Release SDK
+
+on:
+  push:
+    tags: ["sdk-v*"]
+
+# Read-only by default; only the publish job is granted more, and only the
+# OIDC token PyPI's trusted publishing checks -- no PyPI password or API token
+# exists anywhere in this repository or its secrets.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - name: Tag matches the code's version
+        run: |
+          tag="${GITHUB_REF_NAME#sdk-v}"
+          code=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' packages/python-sdk/src/agenttrace/__init__.py)
+          if [ "$tag" != "$code" ]; then
+            echo "::error::tag $GITHUB_REF_NAME is version $tag, but agenttrace.__version__ is $code"
+            exit 1
+          fi
+      - name: Test
+        run: uv run --project packages/python-sdk --python 3.12 --extra dev pytest packages/python-sdk
+      - name: Build
+        run: uv build packages/python-sdk --out-dir dist
+      - name: Check metadata as PyPI will
+        run: uvx twine check --strict dist/*
+      # The wheel, installed on its own, must run the example suite: proves
+      # the package contains everything the CLI needs, not just the repo does.
+      - name: Smoke-test the wheel
+        run: uvx --python 3.12 --from dist/*.whl agenttrace run-suite examples/suites/support/suite.toml
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Matches the trusted publisher configured on pypi.org; protection rules
+    # set on this environment in GitHub (e.g. required reviewers) apply here.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/agenttrace-replay/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      # Also uploads signed provenance attestations for each file (PEP 740).
+      - uses: pypa/gh-action-pypi-publish@release/v1

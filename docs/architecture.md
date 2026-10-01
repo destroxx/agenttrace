@@ -14,8 +14,7 @@ a GitHub Actions workflow that runs every check and the suite, and API keys
 that guard every write.
 
 Explicitly **not** built: semantic (LLM-judged) comparison, the LLM matching
-fallback, evaluation, a PyPI release, user accounts, billing, queues,
-deployment, AWS and Kubernetes.
+fallback, evaluation, user accounts, billing, queues, AWS and Kubernetes.
 
 ## Repository layout
 
@@ -718,6 +717,43 @@ Neon's free compute also suspends after a few idle minutes. The first request
 after a quiet spell is therefore slower, by up to a few seconds — fine for a
 demo. Vercel Functions accept request bodies up to 4.5 MB, which
 becomes ingest's practical size limit.
+
+## Packaging and releases
+
+The SDK is published to PyPI as **`agenttrace-replay`**, by
+`.github/workflows/release.yml`, when a tag `sdk-v<version>` is pushed.
+
+**Three names, on purpose.** The distribution is `agenttrace-replay`; the
+import and the CLI stay `agenttrace`. `agenttrace` on PyPI belongs to an
+unrelated project, and a user who typed it would install someone else's code,
+so the docs name the distribution everywhere an install command appears. The
+version lives once, in `agenttrace.__version__`, and hatchling reads it from
+there (`dynamic = ["version"]`).
+
+**The tag must match the code.** PyPI never accepts a version twice, even
+after a delete, so a mistake cannot be re-published under the same number. The
+release's first step compares the tag with `__version__` and stops before
+building if they differ. Then it runs the tests, builds with `uv build`,
+checks the metadata with `twine check --strict`, and installs the wheel alone
+to run the example suite — the package, not the checkout, has to work.
+
+**No credential exists.** Publishing uses PyPI's trusted publishing: the
+publish job holds only GitHub's OIDC token, which PyPI accepts because it was
+told in advance to trust this repository, this workflow and the `pypi`
+environment. There is no API token to leak or rotate. The upload also attaches
+signed provenance attestations (PEP 740), so anyone can check a file on PyPI
+was built by this workflow.
+
+**CI builds the package on every change.** The `Package` job runs the same
+build, metadata check and wheel smoke test as the release, so a packaging
+mistake — a module left out of the wheel, a broken entry point — fails a pull
+request instead of a release.
+
+**`run-suite` belongs in the agent's environment.** It imports the agent, so
+it must run where the agent's dependencies are installed: the docs recommend
+`uv add --dev agenttrace-replay` and `uv run agenttrace run-suite`, not `uvx`,
+whose isolated environment only suits commands that import nothing of the
+user's, like `export`.
 
 ## Known limitations and deliberate trade-offs
 

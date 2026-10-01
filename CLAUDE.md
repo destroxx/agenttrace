@@ -79,6 +79,8 @@ cd apps/api && RUN_INTEGRATION_TESTS=1 pytest -o addopts=""   # 0 skipped in CI
 cd packages/python-sdk && pytest -o addopts=""
 ruff check apps/api packages/python-sdk examples
 agenttrace run-suite examples/suites/support/suite.toml     # from the repo root; exit 0
+rm -rf /tmp/agenttrace-dist && uv build packages/python-sdk --out-dir /tmp/agenttrace-dist \
+  && uvx --from /tmp/agenttrace-dist/*.whl agenttrace run-suite examples/suites/support/suite.toml   # the wheel alone
 cd apps/web && npm run lint && npm run build && npx tsc --noEmit   # build before tsc
 cd apps/api && alembic upgrade head && alembic downgrade base && alembic upgrade head && alembic check
 ```
@@ -87,7 +89,8 @@ cd apps/api && alembic upgrade head && alembic downgrade base && alembic upgrade
 per-test listing.
 
 `.github/workflows/ci.yml` runs these same commands on every push and pull
-request. A change to one must change the other, or CI and the pre-commit
+request. `.github/workflows/release.yml` publishes the SDK to PyPI as
+`agenttrace-replay` when a tag `sdk-v<agenttrace.__version__>` is pushed. A change to one must change the other, or CI and the pre-commit
 check stop meaning the same thing.
 
 ## Workflow
