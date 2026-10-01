@@ -703,10 +703,13 @@ while the previous deployment keeps serving. A preview is unmerged code; given
 the production database, its migrations would change production's schema
 before review. So previews skip migrations unless
 `AGENTTRACE_MIGRATE_PREVIEWS=1` is set for the Preview environment, which is
-only right when each preview has its own database (a Neon branch per
-deployment). The decision is a pure function with a test per case. The cost:
-a preview whose branch adds a migration runs against the old schema and may
-fail until merged.
+only right when previews have a database of their own. The deployed project
+sets it: Neon's integration gave previews a database separate from
+production's — verified, since a project seeded into production is a `404` on
+a preview — so a pull request that adds a migration gets a working preview
+without touching production. The decision is a pure function with a test per
+case; the safe default stays "production only" for anyone deploying a copy
+whose previews share one database.
 
 **What the platform changes.** The API runs as a Vercel Function on Fluid
 compute: instances are reused across requests, so the engine's connection

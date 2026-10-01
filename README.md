@@ -526,10 +526,11 @@ app) and `DATABASE_URL_UNPOOLED` (direct, used by migrations) into the project.
 **4. Deploy** — push to `main`, or `vercel --prod`. The API's build step
 (`scripts/vercel_build.py`) runs `alembic upgrade head` against the production
 database before the deployment goes live; a failing migration fails the
-deployment and leaves the previous one serving. Preview deployments skip
-migrations, because their code is unmerged and the database is production's.
-If each preview gets its own Neon branch, set `AGENTTRACE_MIGRATE_PREVIEWS=1`
-for the Preview environment and previews migrate their branch instead.
+deployment and leaves the previous one serving. Previews skip migrations by
+default, because their code is unmerged. Neon's integration gives previews a
+database separate from production's, so set `AGENTTRACE_MIGRATE_PREVIEWS=1`
+for the **Preview** environment only, and previews migrate their own copy —
+never set it if your previews share production's database.
 
 **5. Fill it with demo data** from your machine, with the production admin key:
 

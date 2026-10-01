@@ -10,9 +10,10 @@ deployment instead of breaking the live one.
 Only production migrates by default. A preview deployment is code from an
 unmerged branch; run against the production database, its migrations would
 change production's schema before anyone approved them. Set
-`AGENTTRACE_MIGRATE_PREVIEWS=1` for the Preview environment only when each
-preview has its own database -- such as a Neon branch per deployment -- and
-previews then migrate that copy.
+`AGENTTRACE_MIGRATE_PREVIEWS=1` for the Preview environment only when previews
+have a database of their own, and previews then migrate that copy. The
+deployed project does: with Neon's Vercel integration, previews get a database
+separate from production's (checked: a production project is a 404 there).
 """
 
 from __future__ import annotations
