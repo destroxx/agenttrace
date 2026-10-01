@@ -56,7 +56,8 @@ mean the same thing — semantic comparison — is not built yet.
 | ✅ | CI integration | GitHub Actions runs every check and the regression suite on each push and pull request |
 | ✅ | Dashboard | Read-only: projects, runs with verdicts, a run's timeline and its comparison report |
 | ✅ | API keys | Every write needs a key; a project key writes to its own project only; keys stored as hashes; reads stay public |
-| ⬜ | Billing, queues, deployment | Not started |
+| ✅ | Deployment | One Vercel project: site, dashboard and API on one domain, Neon Postgres, migrations in the production build |
+| ⬜ | Billing, queues | Not started |
 
 ## Key design decisions
 
