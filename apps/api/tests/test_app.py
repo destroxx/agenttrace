@@ -33,13 +33,31 @@ def test_app_exposes_exactly_the_documented_surface(app: FastAPI) -> None:
         "/api/v1/projects",
         "/api/v1/projects/{project_id}",
         "/api/v1/projects/{project_id}/comparisons",
+        "/api/v1/projects/{project_id}/keys",
         "/api/v1/projects/{project_id}/runs",
         "/api/v1/projects/{project_id}/runs/ingest",
         "/api/v1/runs/{run_id}",
         "/api/v1/runs/{run_id}/comparison",
         "/api/v1/runs/{run_id}/complete",
         "/api/v1/runs/{run_id}/events",
+        "/api/v1/keys/{key_id}",
     }
+
+
+def test_every_keyed_route_documents_401_and_no_public_read_does(app: FastAPI) -> None:
+    """Writes and key management need a key, reads are public; the contract says which."""
+    writes, reads = [], []
+    for path, operations in app.openapi()["paths"].items():
+        for method, operation in operations.items():
+            documented = set(operation["responses"])
+            if method == "get" and not path.endswith("/keys"):
+                reads.append((path, "401" in documented))
+            else:
+                writes.append((path, method, {"401", "403"} <= documented))
+
+    assert len(writes) == 9
+    assert all(ok for *_, ok in writes), writes
+    assert not any(has_401 for _, has_401 in reads), reads
 
 
 def test_domain_errors_are_documented_on_the_endpoints(app: FastAPI) -> None:

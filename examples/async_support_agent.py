@@ -8,8 +8,8 @@ Run from the repo root with the workspace virtualenv:
 
     .venv/bin/python examples/async_support_agent.py
 
-Set AGENTTRACE_PROJECT_ID (and AGENTTRACE_API_URL, if the API is not on
-localhost:8000) to upload the run. Without them the trace stays in memory and
+Set AGENTTRACE_PROJECT_ID and AGENTTRACE_API_KEY (and AGENTTRACE_API_URL, if
+the API is not on localhost:8000) to upload the run. Without them the trace stays in memory and
 no HTTP request is made, so this example still works offline.
 
 `run_agent` is the agent's entry point and opens its own trace, so the same

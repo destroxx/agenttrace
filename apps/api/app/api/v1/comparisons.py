@@ -10,7 +10,7 @@ import uuid
 
 from fastapi import APIRouter, status
 
-from app.api.dependencies import ComparisonServiceDep, PaginationDep
+from app.api.dependencies import WRITE_RESPONSES, CallerDep, ComparisonServiceDep, PaginationDep
 from app.schemas.common import Page
 from app.schemas.comparison import ComparisonCreate, ComparisonResponse, ComparisonSummary
 
@@ -23,6 +23,7 @@ router = APIRouter(tags=["comparisons"])
     status_code=status.HTTP_201_CREATED,
     summary="Store the comparison report for a replay run",
     responses={
+        **WRITE_RESPONSES,
         status.HTTP_404_NOT_FOUND: {"description": "No such run."},
         status.HTTP_409_CONFLICT: {"description": "The run already has a report."},
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
@@ -35,14 +36,17 @@ router = APIRouter(tags=["comparisons"])
     },
 )
 async def create_comparison(
-    run_id: uuid.UUID, payload: ComparisonCreate, service: ComparisonServiceDep
+    run_id: uuid.UUID,
+    payload: ComparisonCreate,
+    service: ComparisonServiceDep,
+    caller: CallerDep,
 ) -> ComparisonResponse:
     """Store a report produced by the SDK's `compare` for replay run `run_id`.
 
     Reports are immutable. The path parameter shares its name with the GET on
     the same URL, so the two are one path in the OpenAPI document.
     """
-    comparison = await service.create(run_id, payload)
+    comparison = await service.create(run_id, payload, caller)
     return ComparisonResponse.model_validate(comparison)
 
 

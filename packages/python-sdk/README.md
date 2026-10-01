@@ -295,7 +295,7 @@ responses. Review each one for secrets and personal data before committing it.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `AGENTTRACE_API_URL` | `http://localhost:8000` | Where the API lives |
-| `AGENTTRACE_API_KEY` | _unset_ | Optional until authentication ships |
+| `AGENTTRACE_API_KEY` | _unset_ | A project key for `AGENTTRACE_PROJECT_ID`; uploads without one get `401`, logged with what to fix |
 | `AGENTTRACE_PROJECT_ID` | _unset_ | The project runs are uploaded to |
 | `AGENTTRACE_TIMEOUT` | `5` | Seconds to wait for one upload |
 

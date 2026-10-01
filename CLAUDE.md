@@ -32,9 +32,13 @@ Dependencies point inward. Nothing depends on transport.
 | Data | `app/models/`, `app/db/` | ORM, engine, session lifecycle |
 | Config | `app/config.py` | The only module that reads the environment |
 
-Services raise only `NotFoundError` / `ConflictError` / `UnprocessableError`
-from `app/services/exceptions.py`; handlers in `app/main.py` map those to
-404/409/422.
+Services raise only `NotFoundError` / `ConflictError` / `UnprocessableError` /
+`AuthenticationError` / `PermissionDeniedError` from `app/services/exceptions.py`;
+handlers in `app/main.py` map those to 404/409/422/401/403.
+Every write route takes `caller: CallerDep` and passes it to its service, which
+checks it against the project the write really touches (`caller.require_project`,
+`caller.require_admin`). Reads take no caller and are public — except listing a
+project's keys, which is admin-only.
 `HTTPException` appears nowhere under `app/`. Routes declare their
 `responses={404: ..., 409: ...}`. Eager-load relationships (`selectinload`) —
 a lazy load in async context raises. `runs.metadata` is mapped as

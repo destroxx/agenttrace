@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.event import Event
 from app.models.run import Run
 from app.schemas.event import EventCreate
+from app.services.api_keys import Caller
 from app.services.exceptions import ConflictError, NotFoundError
 
 
@@ -20,7 +21,7 @@ class EventService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def create(self, run_id: uuid.UUID, data: EventCreate) -> Event:
+    async def create(self, run_id: uuid.UUID, data: EventCreate, caller: Caller) -> Event:
         """Append one event to a run.
 
         A finished run is a frozen recording: accepting a late event would
@@ -33,6 +34,7 @@ class EventService:
         run = await self._session.get(Run, run_id, with_for_update=True)
         if run is None:
             raise NotFoundError("Run", run_id)
+        caller.require_project(run.project_id)
         if run.is_terminal:
             raise ConflictError(
                 f"Run {run_id} already finished with status {run.status!r}; "

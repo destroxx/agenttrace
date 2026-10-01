@@ -17,8 +17,8 @@ Run from the repo root with the workspace virtualenv:
 
     .venv/bin/python examples/replay_demo.py
 
-Without AGENTTRACE_PROJECT_ID everything stays in memory. With it (and the API
-running), the recording is uploaded, fetched back with `Recording.from_api`,
+Without AGENTTRACE_PROJECT_ID everything stays in memory. With it, a key for
+that project in AGENTTRACE_API_KEY, and the API running, the recording is uploaded, fetched back with `Recording.from_api`,
 each replay is uploaded pointing at it through `replay_of_run_id`, and each
 comparison report is uploaded next to its replay run -- which is what the
 dashboard's run list and report pages show. A failed report upload is logged

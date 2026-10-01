@@ -13,7 +13,13 @@ from app import __version__
 from app.api import api_router
 from app.config import get_settings
 from app.db.session import dispose_engine
-from app.services.exceptions import ConflictError, NotFoundError, UnprocessableError
+from app.services.exceptions import (
+    AuthenticationError,
+    ConflictError,
+    NotFoundError,
+    PermissionDeniedError,
+    UnprocessableError,
+)
 
 
 @asynccontextmanager
@@ -21,6 +27,26 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Release pooled database connections on shutdown."""
     yield
     await dispose_engine()
+
+
+async def _authentication_handler(_: Request, exc: AuthenticationError) -> JSONResponse:
+    """Answer a missing, unknown or revoked key with 401.
+
+    `WWW-Authenticate` is required on a 401 (RFC 9110), and names the scheme a
+    client should retry with.
+    """
+    return JSONResponse(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        content={"detail": exc.detail},
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def _permission_denied_handler(_: Request, exc: PermissionDeniedError) -> JSONResponse:
+    """Answer a valid key used outside its project with 403."""
+    return JSONResponse(
+        status_code=status.HTTP_403_FORBIDDEN, content={"detail": exc.detail}
+    )
 
 
 async def _not_found_handler(_: Request, exc: NotFoundError) -> JSONResponse:
@@ -75,6 +101,11 @@ def create_app() -> FastAPI:
     )
     # Services raise domain errors; the mapping onto HTTP lives here, so no
     # route handler has to translate one into the other.
+    for error, handler in (
+        (AuthenticationError, _authentication_handler),
+        (PermissionDeniedError, _permission_denied_handler),
+    ):
+        app.add_exception_handler(error, handler)  # type: ignore[arg-type]
     app.add_exception_handler(NotFoundError, _not_found_handler)  # type: ignore[arg-type]
     app.add_exception_handler(ConflictError, _conflict_handler)  # type: ignore[arg-type]
     app.add_exception_handler(UnprocessableError, _unprocessable_handler)  # type: ignore[arg-type]

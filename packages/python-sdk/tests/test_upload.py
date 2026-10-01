@@ -7,6 +7,7 @@ import logging
 import time
 from datetime import datetime
 
+import pytest
 from fake_api import closed_port, fake_api
 
 from agenttrace import AgentTracer, TracerConfig
@@ -121,6 +122,45 @@ def test_server_error_is_swallowed(caplog) -> None:
         assert trace.uploaded is False
         messages = [record.getMessage() for record in caplog.records]
         assert any("500" in message for message in messages), messages
+
+
+def test_the_api_key_is_sent_as_a_bearer_token() -> None:
+    with fake_api() as api:
+        tracer = AgentTracer(_config(api.url, api_key="at_project-key"))
+
+        with tracer.trace("agent"):
+            pass
+
+        assert api.requests[0].authorization == "Bearer at_project-key"
+
+
+def test_no_api_key_sends_no_authorization_header() -> None:
+    with fake_api() as api:
+        tracer = AgentTracer(_config(api.url))
+
+        with tracer.trace("agent"):
+            pass
+
+        assert api.requests[0].authorization is None
+
+
+@pytest.mark.parametrize(
+    ("status", "hint"),
+    [(401, "set AGENTTRACE_API_KEY"), (403, "belongs to a different project")],
+)
+def test_a_refused_key_is_logged_with_what_to_fix(status: int, hint: str, caplog) -> None:
+    """The agent is unaffected; the log says which setting is wrong, never the key."""
+    with fake_api(status=status) as api, caplog.at_level(logging.WARNING, logger="agenttrace"):
+        tracer = AgentTracer(_config(api.url, api_key="at_secret-value"))
+
+        with tracer.trace("agent") as trace:
+            pass
+
+        assert trace.uploaded is False
+        assert trace.status == "completed"
+        messages = [record.getMessage() for record in caplog.records]
+        assert any(f"status {status}" in m and hint in m for m in messages), messages
+        assert not any("at_secret-value" in m for m in messages)
 
 
 def test_api_down_is_swallowed() -> None:

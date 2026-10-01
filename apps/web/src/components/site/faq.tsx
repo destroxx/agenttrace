@@ -30,7 +30,7 @@ const QUESTIONS: { q: string; a: string }[] = [
   },
   {
     q: "What is not built yet?",
-    a: "Semantic comparison, which would judge whether two differently worded answers mean the same thing. And auth and deployment: the SDK sends an API key that the API does not check yet, so run the API on a trusted network.",
+    a: "Semantic comparison, which would judge whether two differently worded answers mean the same thing. And deployment with private data: every write needs an API key that can only touch its own project, but reads are public, so anyone who can reach the API can see its runs.",
   },
 ];
 

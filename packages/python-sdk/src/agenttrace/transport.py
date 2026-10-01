@@ -32,6 +32,12 @@ COMPARISON_PATH = "/api/v1/runs/{run_id}/comparison"
 # this run -- is already stored.
 _CREATED = 201
 _CONFLICT = 409
+# 401: no key, or an unknown or revoked one. 403: a valid key for another
+# project. Both are configuration mistakes the log line should name.
+_KEY_HINTS = {
+    401: "set AGENTTRACE_API_KEY to a valid key for this project",
+    403: "AGENTTRACE_API_KEY belongs to a different project than AGENTTRACE_PROJECT_ID",
+}
 
 
 def _isoformat(value: datetime) -> str:
@@ -173,6 +179,14 @@ def _post(
         if exc.code == _CONFLICT:
             logger.debug("agenttrace: %s is already stored", what)
             return True
+        if exc.code in _KEY_HINTS:
+            logger.warning(
+                "agenttrace: upload of %s failed with status %s: %s",
+                what,
+                exc.code,
+                _KEY_HINTS[exc.code],
+            )
+            return False
         logger.warning(
             "agenttrace: upload of %s failed with status %s: %s",
             what,

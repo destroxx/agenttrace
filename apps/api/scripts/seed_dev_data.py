@@ -17,6 +17,7 @@ from app.db.session import dispose_engine, get_sessionmaker
 from app.schemas.event import EventCreate
 from app.schemas.project import ProjectCreate
 from app.schemas.run import RunComplete, RunCreate
+from app.services.api_keys import Caller
 from app.services.events import EventService
 from app.services.projects import ProjectService
 from app.services.runs import RunService
@@ -42,13 +43,19 @@ TRACE = [
 
 
 async def seed() -> None:
-    """Write one complete project -> run -> events -> completion trace."""
+    """Write one complete project -> run -> events -> completion trace.
+
+    As the admin: this script talks to the database directly, so whoever can
+    run it already holds the database password, which outranks any API key.
+    """
+    admin = Caller.admin()
     async with get_sessionmaker()() as session:
         project = await ProjectService(session).create(
             ProjectCreate(
                 name="Customer Support Agent",
                 description="Regression tests for our support agent",
-            )
+            ),
+            admin,
         )
         run = await RunService(session).create(
             project.id,
@@ -57,9 +64,10 @@ async def seed() -> None:
                 agent_version="v1.2.0",
                 input={"message": "Where is my order?"},
             ),
+            admin,
         )
         for event in TRACE:
-            await EventService(session).create(run.id, event)
+            await EventService(session).create(run.id, event, admin)
 
         completed = await RunService(session).complete(
             run.id,
@@ -67,6 +75,7 @@ async def seed() -> None:
                 output={"message": "Your order is arriving tomorrow."},
                 status="completed",
             ),
+            admin,
         )
 
     print(f"project  {project.id}  {project.name}")

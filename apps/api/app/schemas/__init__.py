@@ -5,6 +5,7 @@ models describe how rows are stored, these describe what the API accepts and
 returns. A route never serialises a SQLAlchemy object directly.
 """
 
+from app.schemas.api_key import ApiKeyCreate, ApiKeyCreated, ApiKeyResponse
 from app.schemas.common import ErrorResponse, Page
 from app.schemas.comparison import (
     ComparisonCreate,
@@ -17,6 +18,9 @@ from app.schemas.project import ProjectCreate, ProjectResponse, ProjectSummary
 from app.schemas.run import RunComplete, RunCreate, RunResponse, RunSummary
 
 __all__ = [
+    "ApiKeyCreate",
+    "ApiKeyCreated",
+    "ApiKeyResponse",
     "ComparisonCreate",
     "ComparisonResponse",
     "ComparisonSummary",

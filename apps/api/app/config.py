@@ -73,6 +73,29 @@ class Settings(BaseSettings):
     # Number of seconds a health probe waits on the database before giving up.
     health_check_timeout_seconds: float = 3.0
 
+    # The SHA-256 (hex) of the admin key, never the key itself: whoever reads
+    # the environment learns nothing they can send. The admin key creates
+    # projects and issues project keys. Unset, nobody is admin -- writes still
+    # work with project keys, but no new project or key can be made.
+    admin_key_sha256: SecretStr | None = Field(
+        default=None,
+        description="Hex SHA-256 of the admin API key.",
+    )
+
+    @model_validator(mode="after")
+    def _admin_key_hash_is_a_sha256(self) -> Settings:
+        """Reject a pasted key, or a hash of the wrong kind, at startup."""
+        if self.admin_key_sha256 is None:
+            return self
+        digest = self.admin_key_sha256.get_secret_value()
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError(
+                "ADMIN_KEY_SHA256 must be the 64-character lowercase hex SHA-256 of "
+                "the admin key, not the key itself. Make one with "
+                "`python -m scripts.new_admin_key`."
+            )
+        return self
+
     @model_validator(mode="after")
     def _require_a_way_to_reach_the_database(self) -> Settings:
         """Fail at startup, with a usable message, if the database is unreachable by config."""
