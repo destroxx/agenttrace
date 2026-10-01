@@ -7,7 +7,7 @@
  * any page that could not reach the API.
  */
 
-import { apiBaseUrl } from "@/lib/config";
+import { publicApiUrl } from "@/lib/config";
 import { fetchHealth } from "@/lib/health";
 
 export async function HealthIndicator() {
@@ -24,7 +24,7 @@ export async function HealthIndicator() {
   return (
     <span
       className="flex items-center gap-2 text-xs text-muted-foreground"
-      title={`${apiBaseUrl}/health: ${detail}`}
+      title={`${publicApiUrl}/health: ${detail}`}
     >
       <span className={`animate-trace size-2 rounded-full ${tone}`} aria-hidden />
       <span className="sr-only sm:not-sr-only">{label}</span>

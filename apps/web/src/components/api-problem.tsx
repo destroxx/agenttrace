@@ -11,7 +11,7 @@ import { ApiStatus } from "@/components/api-status";
 import { Display, Micro } from "@/components/brand/primitives";
 import { RetryButton } from "@/components/retry-button";
 import type { ApiFailure } from "@/lib/api";
-import { apiBaseUrl } from "@/lib/config";
+import { publicApiUrl } from "@/lib/config";
 import { fetchHealth } from "@/lib/health";
 
 export async function ApiProblem({ failure }: { failure: ApiFailure }) {
@@ -23,7 +23,7 @@ export async function ApiProblem({ failure }: { failure: ApiFailure }) {
           <Micro tone="fail">api unreachable</Micro>
           <Display className="text-3xl md:text-4xl">Cannot reach the AgentTrace API</Display>
           <p className="max-w-2xl text-[13px] leading-6 text-muted-foreground">
-            The dashboard reads everything from <code className="text-foreground">{apiBaseUrl}</code>,
+            The dashboard reads everything from <code className="text-foreground">{publicApiUrl}</code>,
             and it did not answer ({failure.message}). Nothing is wrong with this page: start the
             API and try again.
           </p>

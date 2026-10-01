@@ -194,6 +194,21 @@ startup with an actionable message if neither is. Both are `SecretStr`, and
 credential reaches `repr()` or `model_dump()`. The password is URL-encoded
 when the DSN is assembled, so punctuation in it cannot corrupt the URL.
 
+**A provider's DSN is translated for asyncpg.** Managed Postgres hands out
+libpq-style URLs — Neon's ends `?sslmode=require&channel_binding=require` —
+and SQLAlchemy passes query options to the driver as keywords. asyncpg takes
+`ssl`, not `sslmode`, and has no `channel_binding`, so an untranslated DSN
+connects nowhere: it fails at the first query, not at startup. `_as_async_dsn`
+renames `sslmode` to `ssl`, drops `channel_binding` (asyncpg negotiates SCRAM
+itself), and keeps every other option. A test checks the final keywords
+against `asyncpg.connect`'s real signature, so a driver upgrade that changes
+them fails CI rather than production.
+
+**Migrations can use their own DSN.** `DATABASE_URL_UNPOOLED`, when set, is
+what Alembic connects with. A pooler in transaction mode suits short request
+queries, but migrations take locks across statements and belong on a direct
+connection; Neon's Vercel integration injects both URLs.
+
 ## Migrations
 
 Alembic reads its URL from the same settings object as the application, so
@@ -654,6 +669,53 @@ set for the whole workflow and again in each job that has its own defaults.
 Pull-request runs are cancelled when a newer commit is pushed to the same pull
 request; runs on `main` always finish, so every commit on `main` has a result.
 
+## Deployment
+
+The stack deploys as one Vercel project with two
+[Services](https://vercel.com/docs/services), defined in `vercel.json`: `web`
+(`apps/web`, Next.js) and `api` (`apps/api`, FastAPI as one Python function).
+Neon Postgres comes from the Vercel Marketplace. Steps are in the README.
+
+**One project, one origin.** Top-level rewrites send `/api/v1/*`, `/health`,
+`/docs` and `/openapi.json` to `api` and everything else to `web`. Vercel
+passes the original path through, and the API already serves exactly those
+paths, so nothing is stripped or prefixed. Frontend and backend deploy and
+roll back together, so the dashboard never runs against an API of a different
+version, and every pull request gets a full preview of both. The alternative —
+two projects — would mean CORS, two URLs per preview, and a preview dashboard
+pointing at production's API.
+
+**Browser requests are relative; server requests use a binding.** On Vercel,
+`next.config.ts` sets `NEXT_PUBLIC_API_URL` to empty, so the browser calls
+`/health` on whatever deployment served the page. Server-side code cannot use
+a relative URL, and a preview's public URL sits behind Vercel's deployment
+protection, so the dashboard's server-side reads go through a private service
+binding, `AGENTTRACE_API_INTERNAL_URL`, which reaches this deployment's `api`
+without the public edge. Locally neither applies and the defaults stay
+`http://localhost:8000`. Text the page displays — a `curl` to paste — uses the
+site's public URL instead of the empty one.
+
+**Migrations run in the build, in production only.** The API's build step
+(`[tool.vercel.scripts] build` → `scripts/vercel_build.py`) runs
+`alembic upgrade head` before the deployment goes live, so production never
+serves code newer than its schema, and a failing migration fails the deploy
+while the previous deployment keeps serving. A preview is unmerged code; given
+the production database, its migrations would change production's schema
+before review. So previews skip migrations unless
+`AGENTTRACE_MIGRATE_PREVIEWS=1` is set for the Preview environment, which is
+only right when each preview has its own database (a Neon branch per
+deployment). The decision is a pure function with a test per case. The cost:
+a preview whose branch adds a migration runs against the old schema and may
+fail until merged.
+
+**What the platform changes.** The API runs as a Vercel Function on Fluid
+compute: instances are reused across requests, so the engine's connection
+pool and `pool_pre_ping` still matter, and instances scale to zero when idle.
+Neon's free compute also suspends after a few idle minutes. The first request
+after a quiet spell is therefore slower, by up to a few seconds — fine for a
+demo. Vercel Functions accept request bodies up to 4.5 MB, which
+becomes ingest's practical size limit.
+
 ## Known limitations and deliberate trade-offs
 
 Every item here is a choice made with its cost understood, not an oversight.
@@ -670,9 +732,9 @@ replay.
 **No request-size limit on ingest.** `MAX_INGEST_EVENTS` caps the number of
 events at 10,000, but nothing caps the bytes, so a single event with a huge
 tool response can still make an arbitrarily large request. The limit belongs at
-the proxy rather than in application code, and is planned for the deployment
-phase. An API key limits who can write, not how much: until then, every key
-holder is trusted not to send an oversized run.
+the proxy rather than in application code. On Vercel the platform's 4.5 MB
+request-body limit is that cap; a self-hosted deployment needs its own proxy
+limit. An API key limits who can write, not how much.
 
 **A hard process kill loses the in-flight run.** Nothing is sent until the run
 ends, so `SIGKILL`, a power loss or a crashed interpreter takes the whole trace

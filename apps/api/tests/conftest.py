@@ -68,6 +68,7 @@ def _pinned_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     # POSTGRES_* must stay authoritative so tests cannot be pointed at a real
     # database by an ambient DATABASE_URL.
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL_UNPOOLED", raising=False)
     monkeypatch.setenv("POSTGRES_DB", _test_database_name())
     monkeypatch.setenv("ADMIN_KEY_SHA256", hashlib.sha256(ADMIN_KEY.encode()).hexdigest())
     get_settings.cache_clear()

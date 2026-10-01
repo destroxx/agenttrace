@@ -37,3 +37,13 @@ addopts = "-q"
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+
+# Vercel (Services): `app/main.py` defines `app`, which Vercel would find on
+# its own; naming it keeps a moved file from silently becoming a 404.
+[tool.vercel]
+entrypoint = "app.main:app"
+
+# Runs after dependencies install, before the deployment goes live. Only a
+# production build migrates; see the script for why previews do not.
+[tool.vercel.scripts]
+build = "python -m scripts.vercel_build"

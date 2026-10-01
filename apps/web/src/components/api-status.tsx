@@ -11,7 +11,7 @@ import { useState, useTransition } from "react";
 
 import { Tag } from "@/components/badges";
 import { buttonClasses, Micro, Panel } from "@/components/brand/primitives";
-import { apiBaseUrl } from "@/lib/config";
+import { publicApiUrl } from "@/lib/config";
 import { fetchHealth, type HealthResult } from "@/lib/health";
 
 export function ApiStatus({ initialResult }: { initialResult: HealthResult }) {
@@ -30,7 +30,7 @@ export function ApiStatus({ initialResult }: { initialResult: HealthResult }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-1">
             <Micro>api status</Micro>
-            <code className="text-[13px] break-all">{apiBaseUrl}/health</code>
+            <code className="text-[13px] break-all">{publicApiUrl}/health</code>
           </div>
           <StatusBadge result={result} isPending={isPending} />
         </div>

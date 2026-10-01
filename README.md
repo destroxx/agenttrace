@@ -482,6 +482,71 @@ It is not idempotent — each run creates a new project. It writes through the
 services directly, as the admin, so it needs no key: whoever can run it already
 holds the database password.
 
+## Deploy to Vercel
+
+The whole stack deploys as **one Vercel project** using
+[Services](https://vercel.com/docs/services) (`vercel.json` at the repo root):
+the Next.js site and dashboard, and the FastAPI service as a Python function,
+on one domain. Postgres comes from [Neon](https://vercel.com/marketplace/neon)
+through the Vercel Marketplace. Both have free tiers.
+
+```
+              <project>.vercel.app
+                       │
+     ┌─────────────────┴──────────────────┐
+     │ /api/v1/*, /health, /docs          │ everything else
+     ▼                                    ▼
+  api  (apps/api, FastAPI)            web  (apps/web, Next.js)
+     │                ▲                   │
+     ▼                └── private binding ┘  (server-side dashboard reads)
+  Neon Postgres
+```
+
+One origin means no CORS, and the browser's requests are relative, so every
+preview deployment talks to its own API. The dashboard's server-side reads use
+a private [binding](https://vercel.com/docs/services/bindings)
+(`AGENTTRACE_API_INTERNAL_URL`) to the same deployment's API.
+
+**1. Import the repository** at <https://vercel.com/new> (or `vercel link` from
+the repo root). Keep the root directory as the repository root; `vercel.json`
+names both services.
+
+**2. Add Neon** from the project's **Storage** tab (or
+`vercel integration add neon`). It injects `DATABASE_URL` (pooled, used by the
+app) and `DATABASE_URL_UNPOOLED` (direct, used by migrations) into the project.
+
+**3. Set the API's settings** for the Production environment:
+
+| Variable | Value |
+| --- | --- |
+| `ADMIN_KEY_SHA256` | From `python -m scripts.new_admin_key` — make a new key for production, never reuse a local one |
+| `ENVIRONMENT` | `production` |
+
+**4. Deploy** — push to `main`, or `vercel --prod`. The API's build step
+(`scripts/vercel_build.py`) runs `alembic upgrade head` against the production
+database before the deployment goes live; a failing migration fails the
+deployment and leaves the previous one serving. Preview deployments skip
+migrations, because their code is unmerged and the database is production's.
+If each preview gets its own Neon branch, set `AGENTTRACE_MIGRATE_PREVIEWS=1`
+for the Preview environment and previews migrate their branch instead.
+
+**5. Fill it with demo data** from your machine, with the production admin key:
+
+```bash
+export AGENTTRACE_API_URL=https://<project>.vercel.app
+ADMIN="Authorization: Bearer <production admin key>"
+export AGENTTRACE_PROJECT_ID=$(curl -s -X POST $AGENTTRACE_API_URL/api/v1/projects \
+  -H "$ADMIN" -H 'content-type: application/json' -d '{"name":"Support agent demo"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')
+export AGENTTRACE_API_KEY=$(curl -s -X POST $AGENTTRACE_API_URL/api/v1/projects/$AGENTTRACE_PROJECT_ID/keys \
+  -H "$ADMIN" -H 'content-type: application/json' -d '{"name":"demo seeding"}' \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin)["key"])')
+python examples/async_support_agent.py && python examples/replay_demo.py
+```
+
+Agents anywhere then record to the deployment with `AGENTTRACE_API_URL` set to
+it and a project key in `AGENTTRACE_API_KEY`.
+
 ## Project structure
 
 ```
@@ -493,12 +558,13 @@ agenttrace/
 │   └── python-sdk/       `agenttrace` SDK with the AgentTracer class
 ├── examples/             Runnable SDK examples
 ├── docs/                 Architecture notes and trade-offs
-└── docker-compose.yml    Local PostgreSQL
+├── docker-compose.yml    Local PostgreSQL
+└── vercel.json           Deployment: the web and api services and their routes
 ```
 
 Inside `apps/api`, dependencies point inward and nothing depends on transport:
 routes (`app/api/`) carry no business logic, services (`app/services/`) never
-import FastAPI and raise only `NotFoundError`/`ConflictError`/`UnprocessableError`, and
+import FastAPI and raise only the five domain errors in `app/services/exceptions.py`, and
 `app/config.py` is the only module that reads the environment.
 
 ## Running the tests
@@ -522,7 +588,7 @@ ruff check apps/api packages/python-sdk examples
 cd apps/web && npm run lint && npm run build && npx tsc --noEmit
 ```
 
-Currently 126 API tests and 188 SDK tests. The API suite owns a separate database
+Currently 137 API tests and 188 SDK tests. The API suite owns a separate database
 and rolls back every test, so running it never touches development data.
 
 Migrations are reversible; the round trip is worth checking after a schema
@@ -578,8 +644,8 @@ docker compose down -v       # stop and delete the data volume
 | File | Consumed by | Notes |
 | --- | --- | --- |
 | `.env` | `docker-compose.yml` | Postgres database, user, password, host port |
-| `apps/api/.env` | FastAPI, Alembic, tests | `DATABASE_URL` or `POSTGRES_*`, CORS allowlist, `ADMIN_KEY_SHA256` |
-| `apps/web/.env.local` | Next.js | `NEXT_PUBLIC_API_URL` (public, never secret) |
+| `apps/api/.env` | FastAPI, Alembic, tests | `DATABASE_URL` or `POSTGRES_*` (and optionally `DATABASE_URL_UNPOOLED` for migrations), CORS allowlist, `ADMIN_KEY_SHA256` |
+| `apps/web/.env.local` | Next.js | `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_SITE_URL` (public, never secret); on Vercel both default from the deployment (`next.config.ts`) |
 | `packages/python-sdk/.env` | SDK consumers | `AGENTTRACE_API_URL`, `AGENTTRACE_API_KEY`, `AGENTTRACE_PROJECT_ID`, `AGENTTRACE_TIMEOUT` |
 
 Every file has a committed `.env.example`; real `.env` files are gitignored.

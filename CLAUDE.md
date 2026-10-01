@@ -18,7 +18,7 @@ length 100).
 `packages/python-sdk/` the SDK, installed into user agent processes, and the
 `agenttrace` CLI (`run-suite`, `export`) · `examples/` runnable examples, and
 `examples/suites/support/` the example regression suite · `docs/architecture.md` design decisions and
-trade-offs, keep current.
+trade-offs, keep current · `vercel.json` the deployment (two Vercel Services, `web` and `api`).
 
 ## API layering
 
