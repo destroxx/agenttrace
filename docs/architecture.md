@@ -696,7 +696,7 @@ without the public edge. Locally neither applies and the defaults stay
 site's public URL instead of the empty one.
 
 **Migrations run in the build, in production only.** The API's build step
-(`[tool.vercel.scripts] build` → `scripts/vercel_build.py`) runs
+(the `api` service's `buildCommand` in `vercel.json` → `scripts/vercel_build.py`) runs
 `alembic upgrade head` before the deployment goes live, so production never
 serves code newer than its schema, and a failing migration fails the deploy
 while the previous deployment keeps serving. A preview is unmerged code; given

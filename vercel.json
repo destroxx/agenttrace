@@ -13,7 +13,9 @@
       ]
     },
     "api": {
-      "root": "apps/api"
+      "root": "apps/api",
+      "entrypoint": "app.main:app",
+      "buildCommand": "python -m scripts.vercel_build"
     }
   },
   "rewrites": [

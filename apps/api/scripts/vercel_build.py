@@ -3,7 +3,7 @@
     python -m scripts.vercel_build
 
 Vercel runs it after installing dependencies and before the deployment goes
-live (`[tool.vercel.scripts] build` in pyproject.toml), so a deployment never
+live (the `api` service's `buildCommand` in vercel.json), so a deployment never
 serves code newer than its schema, and a migration that fails stops the
 deployment instead of breaking the live one.
 
