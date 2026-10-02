@@ -1,4 +1,4 @@
-# Publish the SDK to PyPI as `agenttrace-replay`.
+# Publish the SDK to PyPI as `agenttrace-vcr`.
 #
 # Push a tag `sdk-v<version>`, where <version> is `agenttrace.__version__`:
 #
@@ -64,7 +64,7 @@ jobs:
     # set on this environment in GitHub (e.g. required reviewers) apply here.
     environment:
       name: pypi
-      url: https://pypi.org/project/agenttrace-replay/
+      url: https://pypi.org/project/agenttrace-vcr/
     permissions:
       id-token: write
     steps:

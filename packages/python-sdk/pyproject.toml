@@ -5,9 +5,11 @@ build-backend = "hatchling.build"
 
 [project]
 # The distribution name on PyPI. `agenttrace` there is an unrelated project,
-# so the package is `agenttrace-replay`; the import (`import agenttrace`) and
-# the command (`agenttrace`) keep the short name.
-name = "agenttrace-replay"
+# and PyPI refuses `agenttrace-replay` as too similar to the existing
+# `agent-trace-replay`, so the package is `agenttrace-vcr` -- record and replay,
+# like vcrpy for HTTP. The import (`import agenttrace`) and the command
+# (`agenttrace`) keep the short name.
+name = "agenttrace-vcr"
 # Read from `agenttrace.__version__`, so the code and the package never disagree.
 dynamic = ["version"]
 description = "Record AI-agent runs, replay them against a new version with every tool answered from the recording, and get a PASS/FAIL verdict."

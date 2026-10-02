@@ -61,7 +61,7 @@ mean the same thing — semantic comparison — is not built yet.
 | ✅ | Dashboard | Read-only: projects, runs with verdicts, a run's timeline and its comparison report |
 | ✅ | API keys | Every write needs a key; a project key writes to its own project only; keys stored as hashes; reads stay public |
 | ✅ | Deployment | One Vercel project: site, dashboard and API on one domain, Neon Postgres, migrations in the production build |
-| ✅ | PyPI package | `uv add agenttrace-replay`; built and smoke-tested in CI, published by pushing an `sdk-v*` tag (trusted publishing, no stored token) |
+| ✅ | PyPI package | `uv add agenttrace-vcr`; built and smoke-tested in CI, published by pushing an `sdk-v*` tag (trusted publishing, no stored token) |
 | ⬜ | Billing, queues | Not started |
 
 ## Key design decisions
@@ -231,10 +231,10 @@ each run's timeline, and its comparison report. It changes nothing.
 ## SDK usage
 
 ```bash
-uv add agenttrace-replay       # or: pip install agenttrace-replay
+uv add agenttrace-vcr       # or: pip install agenttrace-vcr
 ```
 
-The package is `agenttrace-replay` on PyPI (`agenttrace` there is an unrelated
+The package is `agenttrace-vcr` on PyPI (`agenttrace` there is an unrelated
 project); it is imported as `agenttrace`, and its CLI is `agenttrace`. It needs
 Python 3.12+ and nothing outside the standard library.
 
@@ -384,7 +384,7 @@ suites live in the repo rather than on the server.
 
 A suite needs no API, no database and no secrets, so running it in CI is a
 checkout, an install and one command. Add the SDK to your agent's project once
-— `uv add --dev agenttrace-replay` — so the CLI runs next to your agent's own
+— `uv add --dev agenttrace-vcr` — so the CLI runs next to your agent's own
 dependencies, which `run-suite` needs to import it. Then copy this into your
 repo as `.github/workflows/regression-suite.yml`:
 
@@ -400,11 +400,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.2.0
-      - run: uv sync                 # your project, agenttrace-replay included
+      - run: uv sync                 # your project, agenttrace-vcr included
       - run: uv run agenttrace run-suite path/to/suite.toml --agent-version "${{ github.sha }}"
 ```
 
-With pip instead: `pip install -r requirements.txt agenttrace-replay`, then
+With pip instead: `pip install -r requirements.txt agenttrace-vcr`, then
 `agenttrace run-suite …`. The job fails on exit `1` (a case regressed) and on
 exit `2` (the suite could not run); the log says which. Your lockfile pins the
 SDK's version, so it changes only when you upgrade it. Leave
