@@ -8,6 +8,22 @@ Record-and-replay regression testing for AI agents.
 [dashboard](https://agenttrace-demo.vercel.app/projects) holding one recording
 replayed against four agent versions, with their PASS/FAIL reports.
 
+## Install
+
+```bash
+uv add agenttrace-vcr        # or: pip install agenttrace-vcr
+```
+
+[![PyPI](https://img.shields.io/pypi/v/agenttrace-vcr)](https://pypi.org/project/agenttrace-vcr/)
+Python 3.12+, no dependencies outside the standard library. The package is
+`agenttrace-vcr`; you import it as `agenttrace`, and its CLI is `agenttrace`
+(`agenttrace` on PyPI is an unrelated project).
+
+That is all an agent needs: [record runs and replay them](#sdk-usage) in tests,
+and [run a regression suite](#run-a-regression-suite) in CI, with no server.
+To store runs and browse them in a dashboard, run the whole stack from a clone
+([Quickstart](#quickstart)) or [deploy it to Vercel](#deploy-to-vercel).
+
 ## The problem
 
 An AI agent is only partly its own code. The rest is the tools it calls —
@@ -96,7 +112,12 @@ Each links to the reasoning in [`docs/architecture.md`](docs/architecture.md).
 
 ## Quickstart
 
-Prerequisites: Python 3.12+, Node.js 20+, Docker with Compose.
+The whole stack — API, dashboard and Postgres — from a clone. Prerequisites:
+Python 3.12+, Node.js 20+, Docker with Compose.
+
+```bash
+git clone https://github.com/destroxx/agenttrace && cd agenttrace
+```
 
 ### 1. Start PostgreSQL
 
@@ -230,15 +251,7 @@ each run's timeline, and its comparison report. It changes nothing.
 
 ## SDK usage
 
-```bash
-uv add agenttrace-vcr       # or: pip install agenttrace-vcr
-```
-
-The package is `agenttrace-vcr` on PyPI (`agenttrace` there is an unrelated
-project); it is imported as `agenttrace`, and its CLI is `agenttrace`. It needs
-Python 3.12+ and nothing outside the standard library.
-
-The SDK records a whole run in memory and uploads it in one request when the
+After [installing](#install) `agenttrace-vcr`: the SDK records a whole run in memory and uploads it in one request when the
 run ends.
 
 ```python
