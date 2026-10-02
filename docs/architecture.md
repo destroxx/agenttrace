@@ -720,13 +720,17 @@ becomes ingest's practical size limit.
 
 ## Packaging and releases
 
-The SDK is published to PyPI as **`agenttrace-replay`**, by
+The SDK is published to PyPI as **`agenttrace-vcr`**, by
 `.github/workflows/release.yml`, when a tag `sdk-v<version>` is pushed.
 
-**Three names, on purpose.** The distribution is `agenttrace-replay`; the
+**Three names, on purpose.** The distribution is `agenttrace-vcr`; the
 import and the CLI stay `agenttrace`. `agenttrace` on PyPI belongs to an
 unrelated project, and a user who typed it would install someone else's code,
 so the docs name the distribution everywhere an install command appears. The
+first choice, `agenttrace-replay`, was refused by PyPI: it compares names with
+dashes, underscores and dots removed, and that reads as the existing
+`agent-trace-replay`. `agenttrace-vcr` is the "VCR for AI agents" — record
+once, play back. The
 version lives once, in `agenttrace.__version__`, and hatchling reads it from
 there (`dynamic = ["version"]`).
 
@@ -751,7 +755,7 @@ request instead of a release.
 
 **`run-suite` belongs in the agent's environment.** It imports the agent, so
 it must run where the agent's dependencies are installed: the docs recommend
-`uv add --dev agenttrace-replay` and `uv run agenttrace run-suite`, not `uvx`,
+`uv add --dev agenttrace-vcr` and `uv run agenttrace run-suite`, not `uvx`,
 whose isolated environment only suits commands that import nothing of the
 user's, like `export`.
 

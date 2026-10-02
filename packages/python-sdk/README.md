@@ -1,4 +1,4 @@
-# agenttrace-replay — the AgentTrace Python SDK
+# agenttrace-vcr — the AgentTrace Python SDK
 
 Records AI-agent executions — tool calls and their responses — so they can be
 replayed against a future version of the agent, with every tool answered from
@@ -10,11 +10,11 @@ Source: <https://github.com/destroxx/agenttrace>
 ## Install
 
 ```bash
-uv add agenttrace-replay          # in a uv project
-pip install agenttrace-replay     # or with pip
+uv add agenttrace-vcr          # in a uv project
+pip install agenttrace-vcr     # or with pip
 ```
 
-The package is **`agenttrace-replay`**; you import it as `agenttrace`, and the
+The package is **`agenttrace-vcr`**; you import it as `agenttrace`, and the
 CLI is `agenttrace`. (`agenttrace` on PyPI is an unrelated project.) Python
 3.12+, and no dependencies outside the standard library.
 
@@ -23,11 +23,11 @@ that has your agent's dependencies — add the package to your project (as a dev
 dependency is enough) and run the CLI through it:
 
 ```bash
-uv add --dev agenttrace-replay
+uv add --dev agenttrace-vcr
 uv run agenttrace run-suite path/to/suite.toml
 ```
 
-`uvx --from agenttrace-replay agenttrace …` runs the CLI in an isolated
+`uvx --from agenttrace-vcr agenttrace …` runs the CLI in an isolated
 environment, which suits `agenttrace export` but not a suite whose agent
 imports anything beyond the standard library.
 

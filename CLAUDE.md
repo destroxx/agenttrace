@@ -90,7 +90,7 @@ per-test listing.
 
 `.github/workflows/ci.yml` runs these same commands on every push and pull
 request. `.github/workflows/release.yml` publishes the SDK to PyPI as
-`agenttrace-replay` when a tag `sdk-v<agenttrace.__version__>` is pushed. A change to one must change the other, or CI and the pre-commit
+`agenttrace-vcr` when a tag `sdk-v<agenttrace.__version__>` is pushed. A change to one must change the other, or CI and the pre-commit
 check stop meaning the same thing.
 
 ## Workflow
