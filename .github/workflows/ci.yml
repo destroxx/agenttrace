@@ -202,7 +202,7 @@ jobs:
     # can never be replaced.
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       - name: Build
         run: uv build packages/python-sdk --out-dir "$RUNNER_TEMP/dist"
       - name: Check metadata as PyPI will

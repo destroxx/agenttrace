@@ -399,7 +399,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.2.0
       - run: uv sync                 # your project, agenttrace-replay included
       - run: uv run agenttrace run-suite path/to/suite.toml --agent-version "${{ github.sha }}"
 ```
