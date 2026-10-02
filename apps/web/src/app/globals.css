@@ -270,3 +270,16 @@
 @keyframes blink {
   50% { opacity: 0; }
 }
+
+/* A progress bar whose animationend is the autoplay clock: with reduced
+   motion it never runs, so nothing advances on its own. */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-dwell {
+    animation: dwell var(--dwell, 6s) linear both;
+  }
+}
+
+@keyframes dwell {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}

@@ -7,7 +7,7 @@
  * re-run it and update this data rather than editing it by hand.
  */
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 
 type Outcome = "exact" | "normalized" | "unmatched" | "unused";
 
@@ -126,10 +126,38 @@ const OUTCOME_STYLE: Record<Outcome, string> = {
   unused: "text-fail",
 };
 
+// Long enough to read a version's rows and verdict before the next one replays.
+const DWELL_MS = 6500;
+
 export function ReplayLab() {
   const [active, setActive] = useState(0);
+  // Autoplay walks the versions until someone picks one; then their choice stays put.
+  const [pinned, setPinned] = useState(false);
+  const [inView, setInView] = useState(false);
+  const [holding, setHolding] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
   const tabs = useRef<(HTMLButtonElement | null)[]>([]);
   const version = VERSIONS[active];
+
+  // Off screen the clock stops, so the first version is still showing when it is scrolled to.
+  useEffect(() => {
+    const node = root.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0.4 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const select = (index: number) => {
+    setPinned(true);
+    setActive(index);
+  };
+  const advance = () => setActive((current) => (current + 1) % VERSIONS.length);
+  const resume = () => {
+    setPinned(false);
+    advance();
+  };
+  const paused = !inView || holding;
 
   // Roving focus for the tab list, per the WAI-ARIA tabs pattern.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -140,54 +168,88 @@ export function ReplayLab() {
         : null;
     if (target === null) return;
     event.preventDefault();
-    setActive(target);
+    select(target);
     tabs.current[target]?.focus();
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <div
-        role="tablist"
-        aria-label="Agent versions"
-        aria-orientation="vertical"
-        onKeyDown={onKeyDown}
-        className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
-      >
-        {VERSIONS.map((item, index) => {
-          const selected = index === active;
-          return (
-            <button
-              key={item.id}
-              ref={(node) => {
-                tabs.current[index] = node;
-              }}
-              role="tab"
-              id={`lab-tab-${item.id}`}
-              aria-selected={selected}
-              aria-controls={`lab-panel-${item.id}`}
-              tabIndex={selected ? 0 : -1}
-              onClick={() => setActive(index)}
-              className={`flex min-h-12 shrink-0 cursor-pointer items-center justify-between gap-3 border px-4 py-3 text-left text-[13px] transition-colors rounded-md focus-visible:outline-2 focus-visible:outline-signal lg:shrink ${
-                selected ? "border-signal bg-code text-foreground" : "border-border text-muted-foreground hover:border-line-strong hover:text-foreground"
-              }`}
-            >
-              <span className="whitespace-nowrap">{item.label}</span>
-              <span
-                className={`rounded-sm px-1.5 py-0.5 text-[10px] tracking-[0.12em] ${
-                  item.verdict === "pass" ? "bg-pass/12 text-pass" : "bg-fail/12 text-fail"
+    <div
+      ref={root}
+      onPointerEnter={() => setHolding(true)}
+      onPointerLeave={() => setHolding(false)}
+      // Keyboard focus only: a mouse click also focuses, and hover already covers the mouse.
+      onFocus={(event) => {
+        if (event.target.matches(":focus-visible")) setHolding(true);
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setHolding(false);
+      }}
+      className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]"
+    >
+      <div className="flex flex-col gap-3">
+        <div
+          role="tablist"
+          aria-label="Agent versions"
+          aria-orientation="vertical"
+          onKeyDown={onKeyDown}
+          className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
+        >
+          {VERSIONS.map((item, index) => {
+            const selected = index === active;
+            return (
+              <button
+                key={item.id}
+                ref={(node) => {
+                  tabs.current[index] = node;
+                }}
+                role="tab"
+                id={`lab-tab-${item.id}`}
+                aria-selected={selected}
+                aria-controls={`lab-panel-${item.id}`}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => select(index)}
+                className={`relative flex overflow-hidden min-h-12 shrink-0 cursor-pointer items-center justify-between gap-3 border px-4 py-3 text-left text-[13px] transition-colors rounded-md focus-visible:outline-2 focus-visible:outline-signal lg:shrink ${
+                  selected ? "border-signal bg-code text-foreground" : "border-border text-muted-foreground hover:border-line-strong hover:text-foreground"
                 }`}
               >
-                {item.verdict.toUpperCase()}
-              </span>
-            </button>
-          );
-        })}
-        <p className="hidden px-4 pt-3 font-mono text-xs leading-5 text-muted-foreground lg:block">
-          real tool executions during all 4 replays: <span className="text-pass">0</span>
-        </p>
+                <span className="whitespace-nowrap">{item.label}</span>
+                <span
+                  className={`rounded-sm px-1.5 py-0.5 text-[10px] tracking-[0.12em] ${
+                    item.verdict === "pass" ? "bg-pass/12 text-pass" : "bg-fail/12 text-fail"
+                  }`}
+                >
+                  {item.verdict.toUpperCase()}
+                </span>
+                {selected && !pinned ? (
+                  // Keyed on the version so the bar restarts from empty each time.
+                  <span
+                    key={`dwell-${item.id}`}
+                    aria-hidden
+                    onAnimationEnd={advance}
+                    style={{ "--dwell": `${DWELL_MS}ms`, animationPlayState: paused ? "paused" : "running" } as CSSProperties}
+                    className="animate-dwell absolute right-4 bottom-1.5 left-4 h-px origin-left bg-signal motion-reduce:hidden"
+                  />
+                ) : null}
+              </button>
+            );
+          })}
+          <p className="hidden px-4 pt-3 font-mono text-xs leading-5 text-muted-foreground lg:block">
+            real tool executions during all 4 replays: <span className="text-pass">0</span>
+          </p>
+        </div>
+        {pinned ? (
+          <button
+            type="button"
+            onClick={resume}
+            className="cursor-pointer self-start px-4 font-mono text-xs text-muted-foreground transition-colors hover:text-signal focus-visible:outline-2 focus-visible:outline-signal motion-reduce:hidden"
+          >
+            ▶ resume autoplay
+          </button>
+        ) : null}
       </div>
 
       <div
+        key={version.id}
         role="tabpanel"
         id={`lab-panel-${version.id}`}
         aria-labelledby={`lab-tab-${version.id}`}
@@ -213,7 +275,7 @@ export function ReplayLab() {
             </thead>
             <tbody>
               {version.rows.map((row, index) => (
-                <tr key={`${version.id}-${index}`} className="animate-rise border-b border-border/50 last:border-0" style={{ animationDelay: `${index * 35}ms` }}>
+                <tr key={`${version.id}-${index}`} className="animate-rise border-b border-border/50 last:border-0" style={{ animationDelay: `${index * 70}ms` }}>
                   <td className="px-5 py-2 text-syntax-function">{row.tool}</td>
                   <td className="px-3 py-2 text-muted-foreground">{row.recorded ?? <span className="italic opacity-70">no recording</span>}</td>
                   <td className="px-3 py-2">{row.replayed ?? <span className="italic text-muted-foreground opacity-70">not called</span>}</td>
@@ -224,7 +286,11 @@ export function ReplayLab() {
           </table>
         </div>
 
-        <div className="flex flex-col gap-2 border-t px-5 py-4 font-mono text-xs">
+        {/* The verdict lands after the last row has replayed. */}
+        <div
+          className="animate-rise flex flex-col gap-2 border-t px-5 py-4 font-mono text-xs"
+          style={{ animationDelay: `${version.rows.length * 70 + 120}ms` }}
+        >
           <p className="text-sm">
             <span className={`font-semibold ${version.verdict === "pass" ? "text-pass" : "text-fail"}`}>
               {version.verdict.toUpperCase()}
