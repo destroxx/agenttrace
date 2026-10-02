@@ -1,12 +1,40 @@
-# agenttrace (Python SDK)
+# agenttrace-replay — the AgentTrace Python SDK
 
 Records AI-agent executions — tool calls and their responses — so they can be
-replayed against a future version of the agent.
+replayed against a future version of the agent, with every tool answered from
+the recording, and judged PASS or FAIL.
 
-## Install (editable, for local development)
+Live demo: <https://agenttrace-demo.vercel.app> ·
+Source: <https://github.com/destroxx/agenttrace>
+
+## Install
 
 ```bash
-pip install -e "packages/python-sdk[dev]"
+uv add agenttrace-replay          # in a uv project
+pip install agenttrace-replay     # or with pip
+```
+
+The package is **`agenttrace-replay`**; you import it as `agenttrace`, and the
+CLI is `agenttrace`. (`agenttrace` on PyPI is an unrelated project.) Python
+3.12+, and no dependencies outside the standard library.
+
+`agenttrace run-suite` imports your agent, so it must run in the environment
+that has your agent's dependencies — add the package to your project (as a dev
+dependency is enough) and run the CLI through it:
+
+```bash
+uv add --dev agenttrace-replay
+uv run agenttrace run-suite path/to/suite.toml
+```
+
+`uvx --from agenttrace-replay agenttrace …` runs the CLI in an isolated
+environment, which suits `agenttrace export` but not a suite whose agent
+imports anything beyond the standard library.
+
+For working on the SDK itself, from a clone of the repository:
+
+```bash
+uv pip install -e "packages/python-sdk[dev]"   # or pip install -e …
 ```
 
 ## Usage
@@ -47,7 +75,7 @@ asyncio.run(main())
 The same block works synchronously — `with tracer.trace(...)` — and
 `@tracer.tool` decorates sync and async functions alike. For an agent that
 calls tools in parallel, see
-[`examples/async_support_agent.py`](../../examples/async_support_agent.py).
+[`examples/async_support_agent.py`](https://github.com/destroxx/agenttrace/blob/main/examples/async_support_agent.py).
 
 `tracer.record_tool_call(name, arguments, response)` is still there for tools
 you cannot decorate.
@@ -285,7 +313,7 @@ entry to paste into `suite.toml`. `python -m agenttrace` is the same command.
 
 To run a suite on every push and pull request, copy the minimal GitHub Actions
 workflow in the main README's
-[Run your suite in CI](../../README.md#run-your-suite-in-ci) section.
+[Run your suite in CI](https://github.com/destroxx/agenttrace/blob/main/README.md#run-your-suite-in-ci) section.
 
 **Recordings are committed verbatim.** They hold real inputs, outputs and tool
 responses. Review each one for secrets and personal data before committing it.

@@ -192,3 +192,24 @@ jobs:
             *) echo "::error::run-suite exited $status" ;;
           esac
           exit "$status"
+
+  package:
+    name: Package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # What `release.yml` publishes, built and run on every change, so a broken
+    # package is found in a pull request rather than on PyPI, where a version
+    # can never be replaced.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Build
+        run: uv build packages/python-sdk --out-dir "$RUNNER_TEMP/dist"
+      - name: Check metadata as PyPI will
+        run: uvx twine check --strict "$RUNNER_TEMP"/dist/*
+      # Installed on its own, not as an editable checkout: proves the wheel
+      # carries everything the CLI needs.
+      - name: Smoke-test the wheel
+        run: |
+          uvx --python 3.12 --from "$RUNNER_TEMP"/dist/*.whl \
+            agenttrace run-suite examples/suites/support/suite.toml

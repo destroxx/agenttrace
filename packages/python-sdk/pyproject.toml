@@ -1,17 +1,44 @@
 [build-system]
-requires = ["hatchling"]
+# 1.27 is the first hatchling to write SPDX `license` metadata (PEP 639).
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agenttrace"
-version = "0.1.0"
-description = "Python SDK for AgentTrace — record AI-agent executions for replay-based regression testing."
+# The distribution name on PyPI. `agenttrace` there is an unrelated project,
+# so the package is `agenttrace-replay`; the import (`import agenttrace`) and
+# the command (`agenttrace`) keep the short name.
+name = "agenttrace-replay"
+# Read from `agenttrace.__version__`, so the code and the package never disagree.
+dynamic = ["version"]
+description = "Record AI-agent runs, replay them against a new version with every tool answered from the recording, and get a PASS/FAIL verdict."
 readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+# A copy of the repository's LICENSE: a build only sees files under this directory.
+license-files = ["LICENSE"]
+authors = [{ name = "Tanmay Singh" }]
+keywords = ["ai-agents", "llm", "regression-testing", "record-replay", "testing", "vcr"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Testing",
+    "Typing :: Typed",
+]
 
 # Deliberately dependency-free: the SDK is imported into user agent processes,
 # so it must not constrain their dependency tree.
 dependencies = []
+
+[project.urls]
+Homepage = "https://agenttrace-demo.vercel.app"
+Repository = "https://github.com/destroxx/agenttrace"
+Documentation = "https://github.com/destroxx/agenttrace/tree/main/packages/python-sdk#readme"
+Issues = "https://github.com/destroxx/agenttrace/issues"
 
 [project.scripts]
 agenttrace = "agenttrace.cli:main"
@@ -19,8 +46,16 @@ agenttrace = "agenttrace.cli:main"
 [project.optional-dependencies]
 dev = ["pytest>=8.3"]
 
+[tool.hatch.version]
+path = "src/agenttrace/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/agenttrace"]
+
+# The sdist is what PyPI keeps as the source of record: the code, its tests and
+# the docs, without caches or local environments.
+[tool.hatch.build.targets.sdist]
+include = ["src/agenttrace", "tests", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
