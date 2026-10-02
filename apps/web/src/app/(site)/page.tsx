@@ -4,6 +4,7 @@ import { ButtonLink, Display, Micro, Panel, RecChip } from "@/components/brand/p
 import { REPO_URL } from "@/components/brand/wordmark";
 import { DashboardPreview } from "@/components/site/dashboard-preview";
 import { Faq } from "@/components/site/faq";
+import { InstallCommand } from "@/components/site/install-command";
 import { HeroVisual } from "@/components/site/hero-visual";
 import { PR_URL, PrProof } from "@/components/site/pr-proof";
 import { C, D, F, FAIL, K, PASS, S, Section, Window } from "@/components/site/primitives";
@@ -258,6 +259,18 @@ function Sdk() {
       title="One decorator per tool. Nothing new in your dependency tree."
       lead="The SDK runs inside your agent's process, so it uses the standard library only. Recording never raises into your code: tool results and exceptions pass through unchanged, and a failed upload is logged, never thrown."
     >
+      <div className="flex flex-col gap-3">
+        <InstallCommand
+          command="uv add agenttrace-vcr"
+          alternative="pip install agenttrace-vcr"
+          href="https://pypi.org/project/agenttrace-vcr/"
+        />
+        <p className="text-xs leading-6 text-muted-foreground">
+          Python 3.12+. The package is <code className="text-foreground">agenttrace-vcr</code>; you
+          import it as <code className="text-foreground">agenttrace</code>, and its CLI is{" "}
+          <code className="text-foreground">agenttrace</code>.
+        </p>
+      </div>
       <div className="grid gap-5 lg:grid-cols-2">
         <Window title="agent.py">
           <K>from</K> agenttrace <K>import</K> AgentTracer{"\n"}
@@ -375,8 +388,9 @@ function Quickstart() {
   // Mirrors README.md's Quickstart, shortened; the README stays the source.
   const steps = [
     {
-      title: "Start Postgres",
+      title: "Clone, then start Postgres",
       lines: [
+        `git clone ${REPO_URL} && cd agenttrace`,
         "cp .env.example .env",
         "# set POSTGRES_PASSWORD in .env, e.g. openssl rand -hex 16",
         "docker compose up -d",
@@ -425,7 +439,14 @@ function Quickstart() {
     <Section
       id="quickstart"
       title="Your first recording, replayed and judged."
-      lead="You need Python 3.12+, Node 20+ and Docker. The demo agent is scripted, so there is no LLM to pay for. With AGENTTRACE_PROJECT_ID and that project's key set, the two examples fill the project with a recording, its replays and their comparison reports."
+      lead={
+        <>
+          Only need the SDK in your agent? <code className="text-foreground">uv add agenttrace-vcr</code>{" "}
+          is all — recording and regression suites work with no server. To run the whole stack
+          (API, dashboard, Postgres) you need Python 3.12+, Node 20+ and Docker. The demo agent is
+          scripted, so there is no LLM to pay for.
+        </>
+      }
       band
     >
       <ol className="grid gap-5 md:grid-cols-2">
