@@ -22,16 +22,6 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
     <div data-surface="site" className="dark relative flex flex-1 flex-col bg-background font-mono text-foreground">
       <div aria-hidden className="bg-grid pointer-events-none fixed inset-0 opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent_70%)]" />
 
-      <p className="relative z-10 flex items-center justify-center gap-3 border-b bg-band px-4 py-2 text-center text-xs text-muted-foreground">
-        <span className="size-1.5 shrink-0 rounded-full bg-pass" aria-hidden />
-        <span>
-          record, replay and compare all work today. semantic comparison is next.{" "}
-          <Link href="/#faq" className="text-foreground underline decoration-signal underline-offset-4 hover:text-signal">
-            see what is not built yet
-          </Link>
-        </span>
-      </p>
-
       <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur">
         <div className="mx-auto flex h-20 w-full max-w-7xl items-center justify-between gap-6 px-5 sm:px-8">
           <Wordmark />

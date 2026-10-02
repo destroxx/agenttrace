@@ -180,17 +180,16 @@ function How() {
     <Section
       id="how"
       title="Record once. Replay every change."
-      lead="The recording becomes the fixture. Every future version of the agent is tested against what the tools actually returned, not against a mock someone wrote from memory."
       band
     >
       {/* A horizontal track: four steps joined by one line, like a timeline. */}
       <ol className="relative grid gap-10 md:grid-cols-2 xl:grid-cols-4 xl:gap-6">
-        <span aria-hidden className="absolute top-[0.6rem] right-0 left-0 hidden h-px bg-line-strong xl:block" />
+        <span aria-hidden className="absolute top-[0.875rem] right-0 left-0 hidden h-px bg-line-strong xl:block" />
         {steps.map((step, index) => (
           <li key={step.name} className="relative flex flex-col gap-5">
-            <span className="relative z-10 flex items-center gap-3">
-              <span className="size-5 rounded-full border-2 border-signal bg-band" aria-hidden />
-              <span className="font-display text-lg font-extrabold text-signal tabular-nums">0{index + 1}</span>
+            {/* The band background masks the track line, so it runs between the numbers. */}
+            <span className="relative z-10 self-start bg-band pr-3 font-display text-lg font-extrabold text-signal tabular-nums">
+              0{index + 1}
             </span>
             <h3 className="font-display text-3xl font-extrabold">{step.name}</h3>
             <p className="text-[13px] leading-6 text-muted-foreground">{step.body}</p>
