@@ -94,7 +94,7 @@ function Counter() {
   const readouts = [
     { value: "000", label: "real tool calls during replay" },
     { value: "001", label: "request to store a whole run" },
-    { value: "009", label: "finding codes, each with a severity" },
+    { value: "011", label: "finding codes, each with a severity" },
     { value: "000", label: "runtime dependencies in the SDK" },
   ];
   return (

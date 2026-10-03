@@ -114,7 +114,7 @@ const CASES: Case[] = [
     source: "replay_demo.py · v4",
     recorded: [{ text: "sign-off: 'Support'" }],
     replayed: [{ text: "sign-off: 'The support team'", mark: "changed" }],
-    finding: "every call matched and only the wording changed, so the run passes with a warning. Exact text is brittle for language agents; one severity override makes it strict.",
+    finding: "every call matched and only the wording changed, so the run passes with a warning. Exact text is brittle for language agents; turn on semantic comparison and Claude decides whether the meaning changed.",
   },
 ];
 

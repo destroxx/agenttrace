@@ -13,10 +13,11 @@ Comparison is layered, strictest first:
 2. **behavioral** -- this module. Each difference becomes a `Finding` with a
    code and a severity: a skipped step, a call nothing recorded, a reordered
    call, a changed status, a changed output field.
-3. **semantic** -- planned, not built: deciding whether two differently worded
-   answers mean the same thing needs a model, and a model is neither
-   deterministic nor free. Until it exists, a pure wording change is reported
-   as `OUTPUT_TEXT_CHANGED` and is a warning, not an error.
+3. **semantic** -- opt-in, in `agenttrace.semantic`: a model judges each
+   wording change this module reports as `OUTPUT_TEXT_CHANGED`, and the
+   finding becomes `OUTPUT_MEANING_CHANGED` or `OUTPUT_TEXT_EQUIVALENT`. It is
+   a separate step rather than part of `compare` because a model is neither
+   deterministic nor free, and this module promises to be both.
 
 The verdict is driven entirely by severity: FAIL if any finding is an error.
 Which differences are errors is policy, not mechanism, so `ComparisonPolicy`
@@ -54,6 +55,8 @@ AGENT_ERROR = "AGENT_ERROR"
 OUTPUT_STRUCTURE_CHANGED = "OUTPUT_STRUCTURE_CHANGED"
 OUTPUT_TEXT_CHANGED = "OUTPUT_TEXT_CHANGED"
 OUTPUT_MISSING = "OUTPUT_MISSING"
+OUTPUT_MEANING_CHANGED = "OUTPUT_MEANING_CHANGED"
+OUTPUT_TEXT_EQUIVALENT = "OUTPUT_TEXT_EQUIVALENT"
 
 # Declaration order is also the order codes appear in `counts["by_code"]`.
 DEFAULT_SEVERITIES: Mapping[str, str] = MappingProxyType(
@@ -73,6 +76,10 @@ DEFAULT_SEVERITIES: Mapping[str, str] = MappingProxyType(
         # layer's job, not a string comparison's. Teams that need exact text
         # raise it to "error" with `ComparisonPolicy(severity_overrides=...)`.
         OUTPUT_TEXT_CHANGED: SEVERITY_WARNING,
+        # The semantic layer's two answers about an OUTPUT_TEXT_CHANGED. Only
+        # `agenttrace.semantic` produces them; `compare` never does.
+        OUTPUT_MEANING_CHANGED: SEVERITY_ERROR,
+        OUTPUT_TEXT_EQUIVALENT: SEVERITY_INFO,
     }
 )
 CODES = tuple(DEFAULT_SEVERITIES)
@@ -129,8 +136,10 @@ class ComparisonPolicy:
     replacing its default (see `DEFAULT_SEVERITIES`):
 
     - error: MISSING_TOOL_CALL, UNEXPECTED_TOOL_CALL, STATUS_CHANGED,
-      AGENT_ERROR, OUTPUT_STRUCTURE_CHANGED, OUTPUT_MISSING
+      AGENT_ERROR, OUTPUT_STRUCTURE_CHANGED, OUTPUT_MISSING,
+      OUTPUT_MEANING_CHANGED
     - warning: ARGUMENTS_NORMALIZED, TOOL_ORDER_CHANGED, OUTPUT_TEXT_CHANGED
+    - info: OUTPUT_TEXT_EQUIVALENT
 
     Raise `OUTPUT_TEXT_CHANGED` to "error" to require word-for-word output;
     lower `TOOL_ORDER_CHANGED` to "info" for an agent whose tool order is
@@ -196,7 +205,8 @@ class ComparisonReport:
     `findings` are in a stable order: errors, then warnings, then info; within
     a severity, run-level findings first, then tool calls in recorded
     sequence, then output fields by path. The same inputs always produce the
-    same report, byte for byte from `to_dict`.
+    same report, byte for byte from `to_dict` -- unless it has been through
+    `agenttrace.semantic.judge_report`, whose verdicts come from a model.
     """
 
     verdict: str
@@ -347,7 +357,22 @@ def compare(
     _output_findings(recording.output, replay_result.output, policy, add)
 
     keyed.sort(key=lambda item: item[0])
-    findings = tuple(finding for _, finding in keyed)
+    return build_report(
+        [finding for _, finding in keyed],
+        recording_run_id=recording.run_id,
+        replay_run_id=replay_result.trace.id if replay_result.trace is not None else None,
+    )
+
+
+def build_report(
+    findings: Iterable[Finding], *, recording_run_id: str, replay_run_id: str | None
+) -> ComparisonReport:
+    """A report from findings already in order: the verdict and counts follow from them.
+
+    Shared with `agenttrace.semantic`, which swaps findings for judged ones,
+    so a judged report can never disagree with its own counts or verdict.
+    """
+    findings = tuple(findings)
     by_severity = {s: sum(1 for f in findings if f.severity == s) for s in SEVERITIES}
     by_code = {
         code: count for code in CODES if (count := sum(1 for f in findings if f.code == code))
@@ -361,9 +386,14 @@ def compare(
                 "by_code": MappingProxyType(by_code),
             }
         ),
-        recording_run_id=recording.run_id,
-        replay_run_id=replay_result.trace.id if replay_result.trace is not None else None,
+        recording_run_id=recording_run_id,
+        replay_run_id=replay_run_id,
     )
+
+
+def severity_rank(severity: str) -> int:
+    """Errors first, then warnings, then info: the order findings are listed in."""
+    return _SEVERITY_RANK[severity]
 
 
 def _run_findings(recording: Recording, result: ReplayResult, add: Any) -> None:

@@ -10,7 +10,7 @@ const QUESTIONS: { q: string; a: string }[] = [
   },
   {
     q: "How do you handle LLM non-determinism?",
-    a: "The recording fixes what the tools answer, so the only thing left to vary is the agent, which is the thing you are testing. Arguments are matched exactly first, then after a conservative normalisation: strings are trimmed, 2.0 equals 2, and keys set to None are dropped. Case is never folded. Reworded output text is a warning by default, not a failure.",
+    a: "The recording fixes what the tools answer, so the only thing left to vary is the agent, which is the thing you are testing. Arguments are matched exactly first, then after a conservative normalisation: strings are trimmed, 2.0 equals 2, and keys set to None are dropped. Case is never folded. Reworded output text is a warning by default, not a failure; turn on semantic comparison and Claude judges whether its meaning changed.",
   },
   {
     q: "Can recording slow down or break my agent?",
@@ -30,7 +30,7 @@ const QUESTIONS: { q: string; a: string }[] = [
   },
   {
     q: "What is not built yet?",
-    a: "Semantic comparison, which would judge whether two differently worded answers mean the same thing. And deployment with private data: every write needs an API key that can only touch its own project, but reads are public, so anyone who can reach the API can see its runs.",
+    a: "Deployment with private data: every write needs an API key that can only touch its own project, but reads are public, so anyone who can reach the API can see its runs. And evaluation: AgentTrace checks that a new agent behaves like its recording, not whether either answer is good.",
   },
 ];
 

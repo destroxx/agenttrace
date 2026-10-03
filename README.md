@@ -52,13 +52,14 @@ be replayed against that recording instead of against production.
                                   real tools
 
   ✅ implemented   ✅ implemented  ✅ implemented   ✅ deterministic
-                                                   ⬜ semantic
+                                                   ✅ semantic (opt-in)
 ```
 
 All four steps work today. **Compare** is deterministic: it turns a replay into
 PASS or FAIL with a finding for each difference (a skipped step, an unexpected
-call, a changed output field). Judging whether two differently worded answers
-mean the same thing — semantic comparison — is not built yet.
+call, a changed output field). **Semantic comparison** is opt-in on top of it:
+Claude judges each reworded output string, so "due tomorrow" for "arriving
+tomorrow" passes and "arriving Friday" fails.
 
 ## Status
 
@@ -71,7 +72,7 @@ mean the same thing — semantic comparison — is not built yet.
 | ✅ | Python SDK recorder | Async/sync tracing, `@tracer.tool`, end-of-run upload, record-time snapshots |
 | ✅ | Replay | Re-run an agent's own entry point with recorded tool results served back; exact → normalized matching |
 | ✅ | Compare (deterministic) | Replay → PASS/FAIL with findings; configurable severities and ignored output paths |
-| ⬜ | Semantic comparison | Judge whether a reworded answer means the same thing; reworded text is a warning until then |
+| ✅ | Semantic comparison | Opt-in: Claude judges whether a reworded answer means the same thing (`judge=` / a suite's `[semantic]`); everything else stays deterministic |
 | ✅ | Regression suites | Recordings committed in your repo, a `suite.toml`, and `agenttrace run-suite` — offline, exit 1 on any FAIL |
 | ✅ | CI integration | GitHub Actions runs every check and the regression suite on each push and pull request |
 | ✅ | Dashboard | Read-only: projects, runs with verdicts, a run's timeline and its comparison report |
@@ -348,9 +349,10 @@ unexpected tool call, a changed status, an agent error and a structural output
 change (a key added or removed, a number changed) are errors; arguments that
 matched only after normalization, a changed call order and **reworded output
 text** are warnings. Rewording is a warning because exact text equality is
-brittle for natural-language agents; judging meaning is the planned semantic
-layer's job. `ComparisonPolicy(severity_overrides={"OUTPUT_TEXT_CHANGED":
-"error"})` makes it strict. `compare(recording, result, policy)` works on any
+brittle for natural-language agents. `ComparisonPolicy(severity_overrides=
+{"OUTPUT_TEXT_CHANGED": "error"})` makes it strict; semantic comparison
+(`judge=ClaudeJudge.from_env()`, or `[semantic]` in a suite) instead has
+Claude decide whether each rewording changed the meaning. `compare(recording, result, policy)` works on any
 replay result, and `report.to_dict()` is a stable, JSON-serialisable form.
 
 | Variable | Default | Purpose |

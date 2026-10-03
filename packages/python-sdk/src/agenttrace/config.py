@@ -18,6 +18,10 @@ ENV_API_URL = "AGENTTRACE_API_URL"
 ENV_API_KEY = "AGENTTRACE_API_KEY"
 ENV_PROJECT_ID = "AGENTTRACE_PROJECT_ID"
 ENV_TIMEOUT = "AGENTTRACE_TIMEOUT"
+# Read only for semantic comparison, which calls Claude as its judge. The
+# base URL is the name Anthropic's own clients use, for a proxy or gateway.
+ENV_ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"
+ENV_ANTHROPIC_BASE_URL = "ANTHROPIC_BASE_URL"
 
 logger = logging.getLogger("agenttrace")
 
@@ -89,3 +93,13 @@ class TracerConfig:
             f"project_id={self.project_id!r}, "
             f"timeout_seconds={self.timeout_seconds!r})"
         )
+
+
+def anthropic_api_key_from_env() -> str | None:
+    """The key semantic comparison's Claude judge uses, or None when unset or blank."""
+    return os.environ.get(ENV_ANTHROPIC_API_KEY, "").strip() or None
+
+
+def anthropic_base_url_from_env() -> str | None:
+    """Where the Claude judge sends requests, when overridden; None means the public API."""
+    return os.environ.get(ENV_ANTHROPIC_BASE_URL, "").strip().rstrip("/") or None

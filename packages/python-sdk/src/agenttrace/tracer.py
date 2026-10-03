@@ -20,6 +20,7 @@ from agenttrace.config import TracerConfig
 from agenttrace.errors import ReplayedToolError, ReplayError
 from agenttrace.models import RecordedEvent, ToolCall, Trace, snapshot_object
 from agenttrace.recording import Recording
+from agenttrace.semantic import Judge, judge_report
 
 logger = logging.getLogger("agenttrace")
 
@@ -527,6 +528,7 @@ class AgentTracer:
         *,
         agent_version: str | None = None,
         policy: ComparisonPolicy | None = None,
+        judge: Judge | None = None,
         upload_report: bool = True,
     ) -> tuple[_replay.ReplayResult, ComparisonReport]:
         """`replay`, then `compare` the result against `recording`.
@@ -538,9 +540,16 @@ class AgentTracer:
         and `True` changes nothing when there is nowhere to upload to. The
         upload follows the recording rules -- a failure is logged, never
         raised -- because the verdict is the caller's answer either way.
+
+        With a `judge`, every wording change is then judged for meaning (see
+        `agenttrace.semantic`), and the uploaded report is the judged one. A
+        judge that cannot answer raises `JudgeError` and nothing is uploaded.
         """
         result = await self.replay(recording, agent_fn, agent_version=agent_version)
         report = compare(recording, result, policy)
+        if judge is not None:
+            # A model call per wording change: blocking HTTP, off the event loop.
+            report = await asyncio.to_thread(judge_report, report, judge, policy)
         if upload_report and self._config.upload_enabled:
             # Blocking stdlib HTTP, so off the event loop like the trace upload.
             await asyncio.to_thread(self.upload_comparison, report)

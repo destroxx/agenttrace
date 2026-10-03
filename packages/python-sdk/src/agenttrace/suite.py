@@ -12,6 +12,10 @@ because in CI there is none.
     severity_overrides = { TOOL_ORDER_CHANGED = "info" }
     ignore_paths = ["generated_at"]
 
+    [semantic]                            # optional: judge reworded output with Claude
+    model = "claude-opus-5-5"             # optional; this is the default
+    effort = "low"                        # optional; this is the default
+
     [[cases]]
     name = "two-orders"
     recording = "recordings/two-orders.json"   # relative to this file
@@ -22,6 +26,11 @@ Everything is loaded and validated before any case runs, and any problem is
 one `SuiteError` naming the file and case. A suite that ran the cases it could
 load would report a verdict on part of itself, and CI would read that as the
 agent's result.
+
+`[semantic]` turns on semantic comparison for every case (see
+`agenttrace.semantic`). It is the one part of a suite that needs the network
+and a key, so it is opt-in per suite, and `run-suite --no-semantic` turns it
+off for a single run.
 """
 
 from __future__ import annotations
@@ -39,9 +48,22 @@ from agenttrace.comparison import ComparisonPolicy
 from agenttrace.errors import SuiteError
 from agenttrace.recording import Recording
 
-_SUITE_KEYS = {"name", "agent", "policy", "cases"}
+_SUITE_KEYS = {"name", "agent", "policy", "semantic", "cases"}
 _CASE_KEYS = {"name", "recording", "policy"}
 _POLICY_KEYS = {"severity_overrides", "ignore_paths"}
+_SEMANTIC_KEYS = {"model", "effort"}
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticSettings:
+    """A suite's `[semantic]` table: which model judges, and how hard it thinks.
+
+    Only settings: the judge itself is built when the suite runs, because it
+    needs a key from the environment and loading a suite must not.
+    """
+
+    model: str | None = None
+    effort: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +85,7 @@ class Suite:
     agent: str
     policy: ComparisonPolicy
     cases: tuple[SuiteCase, ...]
+    semantic: SemanticSettings | None = None
 
 
 def format_recording(payload: Mapping[str, Any]) -> str:
@@ -109,6 +132,7 @@ def load_suite(path: str | Path) -> Suite:
     agent = _required_string(raw, "agent", where)
     _split_agent(agent, where)
     policy = _policy(raw.get("policy"), where) or ComparisonPolicy()
+    semantic = _semantic(raw.get("semantic"), where)
 
     raw_cases = raw.get("cases")
     if not isinstance(raw_cases, list) or not raw_cases:
@@ -143,7 +167,14 @@ def load_suite(path: str | Path) -> Suite:
             )
         )
 
-    return Suite(name=name, path=suite_path, agent=agent, policy=policy, cases=tuple(cases))
+    return Suite(
+        name=name,
+        path=suite_path,
+        agent=agent,
+        policy=policy,
+        cases=tuple(cases),
+        semantic=semantic,
+    )
 
 
 def import_agent(suite: Suite) -> Callable[..., Any]:
@@ -242,6 +273,23 @@ def _policy(raw: Any, where: str, case: str | None = None) -> ComparisonPolicy |
         return ComparisonPolicy(severity_overrides=overrides, ignore_paths=tuple(paths))
     except (ValueError, TypeError) as exc:
         raise SuiteError(f"invalid policy: {exc}", path=where, case=case) from exc
+
+
+def _semantic(raw: Any, where: str) -> SemanticSettings | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise SuiteError("semantic must be a table", path=where)
+    _reject_unknown(raw, _SEMANTIC_KEYS, "semantic", where)
+    values: dict[str, str] = {}
+    for key in sorted(_SEMANTIC_KEYS):
+        if key not in raw:
+            continue
+        value = raw[key]
+        if not isinstance(value, str) or not value.strip():
+            raise SuiteError(f"semantic.{key} must be a non-empty string", path=where)
+        values[key] = value.strip()
+    return SemanticSettings(**values)
 
 
 def _reject_unknown(
