@@ -16,6 +16,14 @@ agent = "examples.async_support_agent:run_agent"
 # severity_overrides = { TOOL_ORDER_CHANGED = "info" }
 # ignore_paths = ["generated_at"]
 
+# Optional: have Claude judge whether reworded output still means the same
+# thing. Needs ANTHROPIC_API_KEY; `run-suite --no-semantic` skips it. Left off
+# here so the suite, and this repo's CI, stays offline.
+#
+# [semantic]
+# model = "claude-opus-5-5"
+# effort = "low"
+
 [[cases]]
 name = "two-orders"
 recording = "recordings/two-orders.json"

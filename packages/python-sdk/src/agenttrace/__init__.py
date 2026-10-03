@@ -11,7 +11,9 @@ Tool results and exceptions pass through untouched, and any failure to record
 or upload is logged to the ``agenttrace`` logger and swallowed. Replay is test
 tooling invoked on purpose, so it raises the exceptions in ``agenttrace.errors``
 instead. `compare` (or `tracer.replay_and_compare`) turns a replay into a
-deterministic PASS/FAIL report with the findings behind it. A regression suite
+deterministic PASS/FAIL report with the findings behind it; `judge_report`
+(or `judge=` on `replay_and_compare`) optionally has a model decide whether
+reworded output still means the same thing. A regression suite
 -- a TOML file of recorded cases in the developer's repo -- is run with
 ``agenttrace run-suite``; see ``agenttrace.suite`` and ``agenttrace.cli``.
 """
@@ -20,6 +22,7 @@ from agenttrace.comparison import ComparisonPolicy, ComparisonReport, Finding, c
 from agenttrace.config import TracerConfig
 from agenttrace.errors import (
     AgentTraceAPIError,
+    JudgeError,
     RecordingNotFound,
     ReplayedToolError,
     ReplayError,
@@ -29,6 +32,7 @@ from agenttrace.errors import (
 from agenttrace.models import RecordedEvent, ToolCall, Trace
 from agenttrace.recording import RecordedToolCall, Recording
 from agenttrace.replay import ReplayResult, ReplaySummary, ToolCallMatch, UnusedRecordedCall
+from agenttrace.semantic import ClaudeJudge, Judgement, judge_report
 from agenttrace.suite import Suite, SuiteCase, load_suite
 from agenttrace.tracer import AgentTracer
 
@@ -37,9 +41,12 @@ __version__ = "0.1.0"
 __all__ = [
     "AgentTraceAPIError",
     "AgentTracer",
+    "ClaudeJudge",
     "ComparisonPolicy",
     "ComparisonReport",
     "Finding",
+    "JudgeError",
+    "Judgement",
     "RecordedEvent",
     "RecordedToolCall",
     "Recording",
@@ -59,5 +66,6 @@ __all__ = [
     "UnusedRecordedCall",
     "__version__",
     "compare",
+    "judge_report",
     "load_suite",
 ]

@@ -13,8 +13,9 @@ regression suites kept in the developer's repo, run by the `agenttrace` CLI,
 a GitHub Actions workflow that runs every check and the suite, and API keys
 that guard every write.
 
-Explicitly **not** built: semantic (LLM-judged) comparison, the LLM matching
-fallback, evaluation, user accounts, billing, queues, AWS and Kubernetes.
+Semantic comparison is built and opt-in: Claude judges whether reworded output
+means the same thing. Explicitly **not** built: the LLM matching fallback,
+evaluation, user accounts, billing, queues, AWS and Kubernetes.
 
 ## Repository layout
 
@@ -392,10 +393,10 @@ set to `None` vs left out — is not reported for outputs either.
    `OUTPUT_STRUCTURE_CHANGED` (a key added or removed, a type, number or
    boolean changed, a list length changed), `OUTPUT_TEXT_CHANGED` (only the
    wording of a string differs) and `OUTPUT_MISSING`.
-3. *Semantic* — planned, not built. Whether "arriving tomorrow" and "due
+3. *Semantic* — built, opt-in. Whether "arriving tomorrow" and "due
    tomorrow" mean the same thing needs a model, which is neither deterministic
-   nor free; it belongs on top of the deterministic levels, judging only what
-   they flag as a wording change.
+   nor free, so it sits on top of the deterministic levels and judges only
+   what they flag as a wording change. See "Semantic comparison" below.
 
 **The verdict is severity-driven and configurable.** Every finding is
 `error`, `warning` or `info`; the verdict is `fail` if any is an error. What
@@ -416,7 +417,7 @@ normalized arguments, a changed order and a text change.
 brittle for agents that answer in natural language: a model rephrasing its
 reply is the normal case, not a regression, and a suite that fails on every
 rewording gets ignored. Deciding whether two wordings mean the same thing is
-the semantic layer's job; until it exists the change is surfaced, not failed.
+the semantic layer's job; without it the change is surfaced, not failed.
 Teams that need word-for-word output raise it to `error`.
 
 **Why order is checked, and how.** An agent that confirms a booking *after*
@@ -438,6 +439,50 @@ happened to start first.
 recording it may have fetched moments ago or recorded in the same process,
 without a round trip to a service. The API stores reports so they can be looked
 at later, but never computes or changes a verdict.
+
+### Semantic comparison
+
+`judge_report(report, judge, policy)` in `agenttrace/semantic.py` takes a
+finished report and puts each non-ignored `OUTPUT_TEXT_CHANGED` finding to a
+judge. The finding becomes `OUTPUT_MEANING_CHANGED` (error) or
+`OUTPUT_TEXT_EQUIVALENT` (info), keeps the deterministic text change in its
+details next to the judge's reason, and the verdict and counts are rebuilt by
+the same `build_report` that `compare` uses, so they cannot disagree.
+`tracer.replay_and_compare(..., judge=)` and a suite's `[semantic]` table are
+the two ways in.
+
+**Why a separate step, not a level inside `compare`.** `compare` is pure and
+deterministic, and suites, CI and tests rely on that. A model call is neither,
+so it lives in its own function that takes `compare`'s output; with no judge,
+nothing about comparison changes, byte for byte.
+
+**Why only wording changes are judged.** A skipped tool call, a changed status
+or a changed number is already a fact. Asking a model about a fact can only
+make the verdict less reliable, so the judge never sees one.
+
+**Why a failed judgement raises.** No key, an unreachable API, a refusal, or
+an answer that is not the agreed JSON all raise `JudgeError`. Reading any of
+them as "equivalent" would pass a changed meaning; reading them as "changed"
+would fail a suite over an outage. Either would write into the report a
+judgement nobody made. `run-suite` turns it into an `ERROR` case and exit
+code `2`: the suite could not vouch for its verdict.
+
+**Why the judge is a plain callable.** `(path, recorded, new) -> Judgement` is
+the whole interface, so another provider, a caching wrapper or a test double
+needs no base class. `ClaudeJudge` is the one that ships. It calls the Messages
+API with `urllib` rather than the `anthropic` package, because the SDK has no
+runtime dependencies. It asks for a JSON-schema answer
+(`output_config.format`), so the reply is parsed rather than scraped, and it
+defaults to `claude-opus-5-5` at low effort. It retries rate limits and server
+errors, honouring `retry-after`, and fails at once on anything else. The
+prompt treats both strings as data, and when the model is unsure it should
+answer "changed": a false alarm costs a reviewer a minute, while a false
+"equivalent" ships a regression.
+
+**Why it is opt-in per suite.** It needs a key, the network and money, and a
+suite otherwise runs offline. `[semantic]` turns it on for a suite, and
+`--no-semantic` turns it off for one run. A missing key stops the run before
+any case starts, with one message, instead of failing every case.
 
 ## Stored reports and the dashboard
 
@@ -785,6 +830,14 @@ with it. The alternative — streaming each event — costs a request per tool c
 and leaves partially stored traces behind, which replay cannot distinguish from
 an agent that legitimately stopped early. Losing a recording is recoverable;
 trusting a truncated one is not.
+
+**A judged report is not reproducible.** Semantic comparison asks a model, so
+the same replay can, rarely, be judged differently on a second run, and each
+distinct rewording is a paid call that sends both strings to Anthropic.
+Deterministic comparison stays the default, and a judged finding records the
+judge's model and reason so a surprising verdict can be checked. Caching
+verdicts by (model, recorded, new) would make reruns stable and free, at the
+cost of a cache file to manage.
 
 **Reads are public.** Anyone who can reach the API can read every project's
 runs, traces and reports. That is the point of a demo deployment and wrong for

@@ -1,6 +1,6 @@
 """The `agenttrace` command: run a regression suite, export a recording.
 
-    agenttrace run-suite PATH [--agent-version LABEL]
+    agenttrace run-suite PATH [--agent-version LABEL] [--no-semantic]
     agenttrace export RUN_ID -o PATH [--force]
 
 Exit codes are part of the contract, because CI branches on them:
@@ -8,8 +8,9 @@ Exit codes are part of the contract, because CI branches on them:
     0  every case passed
     1  at least one case failed -- the agent regressed
     2  the suite could not run -- a bad suite file, an agent that will not
-       import, bad arguments, an export that could not be written, or a
-       case that replay itself could not run (printed as ERROR)
+       import, bad arguments, an export that could not be written, a suite
+       that asks for semantic comparison with no ANTHROPIC_API_KEY, or a case
+       that replay or the semantic judge could not finish (printed as ERROR)
 
 1 and 2 are kept apart so a pipeline can tell "the agent regressed" from "the
 suite is broken". The first needs the author of the change; the second needs
@@ -32,8 +33,9 @@ from typing import Any, TextIO
 
 from agenttrace.comparison import SEVERITY_ERROR, SEVERITY_WARNING, ComparisonReport
 from agenttrace.config import TracerConfig
-from agenttrace.errors import AgentTraceAPIError, RecordingNotFound, SuiteError
+from agenttrace.errors import AgentTraceAPIError, JudgeError, RecordingNotFound, SuiteError
 from agenttrace.recording import Recording, fetch_payload
+from agenttrace.semantic import DEFAULT_EFFORT, ClaudeJudge, Judge
 from agenttrace.suite import Suite, format_recording, import_agent, load_suite
 from agenttrace.tracer import AgentTracer
 
@@ -72,6 +74,11 @@ def _parser() -> argparse.ArgumentParser:
         metavar="LABEL",
         help="version label to put on the replay runs, e.g. a git SHA",
     )
+    run.add_argument(
+        "--no-semantic",
+        action="store_true",
+        help="skip the suite's [semantic] judge: no network, no key needed",
+    )
     run.set_defaults(handler=_run_suite)
 
     export = commands.add_parser(
@@ -105,12 +112,29 @@ def _run_suite(args: argparse.Namespace, out: TextIO, err: TextIO) -> int:
         print(f"agenttrace: {exc}", file=err)
         return EXIT_UNUSABLE
 
+    judge: Judge | None = None
+    if suite.semantic is not None and not args.no_semantic:
+        # Built before any case runs, so a missing key is one clear message
+        # rather than every case printing ERROR for the same reason.
+        effort = suite.semantic.effort or DEFAULT_EFFORT
+        try:
+            judge = ClaudeJudge.from_env(
+                model=suite.semantic.model,
+                effort=None if effort == "none" else effort,
+            )
+        except JudgeError as exc:
+            print(f"agenttrace: {suite.path}: {exc} (or pass --no-semantic)", file=err)
+            return EXIT_UNUSABLE
+        print(f"semantic comparison: judged by {judge.name}", file=out, flush=True)
+
     # One tracer for the whole run, built from the environment: uploading stays
     # off unless AGENTTRACE_PROJECT_ID is set. It need not be the agent's own
     # tracer -- the replay session is module-level, so the agent's tools are
     # answered from the recording whichever tracer decorated them.
     tracer = AgentTracer()
-    reports = asyncio.run(_run_cases(tracer, suite, agent, args.agent_version, out, err))
+    reports = asyncio.run(
+        _run_cases(tracer, suite, agent, args.agent_version, judge, out, err)
+    )
 
     passed = sum(1 for report in reports if report is not None and report.passed)
     could_not_run = sum(1 for report in reports if report is None)
@@ -130,6 +154,7 @@ async def _run_cases(
     suite: Suite,
     agent: Callable[..., Any],
     agent_version: str | None,
+    judge: Judge | None,
     out: TextIO,
     err: TextIO,
 ) -> list[ComparisonReport | None]:
@@ -143,14 +168,20 @@ async def _run_cases(
     for case in suite.cases:
         try:
             _, report = await tracer.replay_and_compare(
-                case.recording, agent, agent_version=agent_version, policy=case.policy
+                case.recording,
+                agent,
+                agent_version=agent_version,
+                policy=case.policy,
+                judge=judge,
             )
         except Exception as exc:  # noqa: BLE001 - one broken case must not hide the rest
             # The agent's own exceptions are already an AGENT_ERROR finding;
-            # reaching here means replay itself could not run the case, which
-            # says nothing about the agent -- so ERROR, not FAIL. "ERROR " is
+            # reaching here means replay itself, or the semantic judge, could
+            # not finish the case, which says nothing about the agent -- so
+            # ERROR, not FAIL. "ERROR " is
             # as wide as "PASS  ", which keeps the case names in one column.
-            print(f"ERROR {case.name:<{width}}  could not replay", file=out, flush=True)
+            what = "could not judge" if isinstance(exc, JudgeError) else "could not replay"
+            print(f"ERROR {case.name:<{width}}  {what}", file=out, flush=True)
             print(f"agenttrace: case {case.name!r}: {type(exc).__name__}: {exc}", file=err)
             reports.append(None)
             continue

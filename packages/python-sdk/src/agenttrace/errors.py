@@ -88,3 +88,18 @@ class SuiteError(Exception):
         super().__init__(f"{where}: {message}")
         self.path = path
         self.case = case
+
+
+class JudgeError(Exception):
+    """The semantic judge could not give a verdict on a wording change.
+
+    No key, the model API unreachable or refusing, an answer that is not the
+    agreed JSON. Raised rather than read as either verdict: "equivalent" would
+    pass a changed meaning, and "changed" would fail a suite over an outage --
+    and either way the report would claim a judgement nobody made. `status` is
+    the HTTP status when there was a response.
+    """
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status

@@ -204,15 +204,17 @@ disagree about what "the same call" means.
 | `OUTPUT_MISSING` | error | One side has an output and the other does not |
 | `OUTPUT_STRUCTURE_CHANGED` | error | An output key added or removed, a type, number or boolean changed, a list length changed |
 | `OUTPUT_TEXT_CHANGED` | warning | Only the wording of a string in the output differs |
+| `OUTPUT_MEANING_CHANGED` | error | Semantic comparison only: the judge says a reworded string means something different |
+| `OUTPUT_TEXT_EQUIVALENT` | info | Semantic comparison only: the judge says a reworded string means the same |
 
 The verdict is `fail` if any finding has severity `error`. Outputs are diffed
 after the same `normalize` matching uses, so surrounding whitespace, `2` vs
 `2.0` and a `None`-valued key vs a missing one are not reported at all.
 
 `OUTPUT_TEXT_CHANGED` is a warning by default: exact text equality is brittle
-for agents that answer in natural language, and deciding whether two wordings
-mean the same thing is the planned semantic layer's job. Raise it to `error`
-if your agent's output must match word for word.
+for agents that answer in natural language. Raise it to `error` if your
+agent's output must match word for word, or turn on semantic comparison to
+have a model decide whether each rewording matters.
 
 ### Uploading the report
 
@@ -223,6 +225,42 @@ replay run it describes, so the dashboard can show the verdict. Pass
 rules: a failure is logged to the `agenttrace` logger and never raised, and it
 never changes the verdict — the report you get back is the answer either way.
 A report the API already holds counts as stored, so a retry is safe.
+
+### Semantic comparison
+
+Deterministic comparison can tell that "Arriving tomorrow." became "Due
+tomorrow." — not that it means the same thing, while "Arriving Friday." does
+not. Semantic comparison asks a model. It is opt-in, and it runs after
+`compare`, on its report:
+
+```python
+from agenttrace import ClaudeJudge, judge_report
+
+report = judge_report(compare(recording, result, policy), ClaudeJudge.from_env(), policy)
+# or in one step:
+result, report = await tracer.replay_and_compare(recording, run_agent, judge=ClaudeJudge.from_env())
+```
+
+Only `OUTPUT_TEXT_CHANGED` findings are judged; each becomes
+`OUTPUT_MEANING_CHANGED` (an error) or `OUTPUT_TEXT_EQUIVALENT` (info), with
+the judge's one-sentence reason in the message and in
+`details["judge"]`. Every other finding is a fact and is left alone, as is a
+change at an ignored path. Both codes take `severity_overrides` like any other,
+and a repeated (recorded, new) pair is judged once.
+
+`ClaudeJudge` calls the Messages API with `ANTHROPIC_API_KEY` (and
+`ANTHROPIC_BASE_URL` if set), using `claude-opus-5-5` at `effort="low"` by
+default. Like the rest of the SDK it uses only the standard library. Any
+callable `(path, recorded, new) -> Judgement` is a judge, so another provider
+or a test double plugs in the same way.
+
+A judge that cannot answer — no key, the API down or refusing, an answer that
+is not the agreed JSON — raises `JudgeError`. It never guesses: an "equivalent"
+would pass a changed meaning, and a "changed" would fail a suite over an outage.
+
+Trade-offs to know: a judged report is no longer deterministic (the same
+replay can, rarely, be judged differently), each distinct rewording is one
+paid model call, and the reworded text is sent to Anthropic.
 
 To upload a report you built yourself with `compare`, call
 `tracer.upload_comparison(report)`; it returns whether the report is now
@@ -261,6 +299,10 @@ agent = "examples.async_support_agent:run_agent"   # module:function
 severity_overrides = { TOOL_ORDER_CHANGED = "info" }
 ignore_paths = ["generated_at"]
 
+[semantic]                                # optional: judge reworded output
+model = "claude-opus-5-5"                 # optional; the default
+effort = "low"                            # optional; the default, "none" to omit
+
 [[cases]]
 name = "two-orders"
 recording = "recordings/two-orders.json"  # relative to suite.toml
@@ -274,7 +316,7 @@ every policy — is validated before any case runs; a problem is one
 `SuiteError` naming the file and case.
 
 ```bash
-agenttrace run-suite PATH [--agent-version LABEL]
+agenttrace run-suite PATH [--agent-version LABEL] [--no-semantic]
 agenttrace export RUN_ID -o PATH [--force]
 ```
 
@@ -289,13 +331,19 @@ suite support: 1 passed, 1 failed
 | --- | --- |
 | `0` | Every case passed |
 | `1` | At least one case failed — the agent regressed |
-| `2` | The suite could not run: a `SuiteError`, an agent that will not import, bad arguments, or a failed export |
+| `2` | The suite could not run: a `SuiteError`, an agent that will not import, bad arguments, a `[semantic]` suite with no `ANTHROPIC_API_KEY`, or a failed export |
 
 A FAIL lists its error findings; warnings are only counted. 1 and 2 differ so
 CI can tell a regression from a broken suite. An agent that
 raises during a case FAILs that case (`AGENT_ERROR`); the rest still run. A
-case the tool itself could not replay prints `ERROR` and makes the exit code
-`2`, even if other cases FAILed.
+case the tool itself could not replay, or the judge could not judge, prints
+`ERROR` and makes the exit code `2`, even if other cases FAILed.
+
+A suite with `[semantic]` judges reworded output with Claude (see
+[Semantic comparison](#semantic-comparison)) and needs `ANTHROPIC_API_KEY`;
+without it, `run-suite` exits `2` before running any case.
+`--no-semantic` skips the judge for one run, which keeps the suite offline
+and leaves rewordings as `OUTPUT_TEXT_CHANGED` warnings.
 
 `run-suite` imports the agent with the working directory first on `sys.path`,
 so run it from the directory the `module:function` path is relative to —
@@ -326,6 +374,8 @@ responses. Review each one for secrets and personal data before committing it.
 | `AGENTTRACE_API_KEY` | _unset_ | A project key for `AGENTTRACE_PROJECT_ID`; uploads without one get `401`, logged with what to fix |
 | `AGENTTRACE_PROJECT_ID` | _unset_ | The project runs are uploaded to |
 | `AGENTTRACE_TIMEOUT` | `5` | Seconds to wait for one upload |
+| `ANTHROPIC_API_KEY` | _unset_ | Only for semantic comparison: the key `ClaudeJudge.from_env()` calls Claude with |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com` | Only for semantic comparison: a proxy or gateway in front of the Messages API |
 
 **Uploading is opt-in.** Without `AGENTTRACE_PROJECT_ID` the SDK records
 traces in memory and never opens a socket, so it is safe to import in tests
@@ -400,6 +450,6 @@ logging.getLogger("agenttrace").setLevel(logging.DEBUG)
 
 ## Scope
 
-Recording, upload, replay, deterministic comparison and regression suites are
-implemented, and suites run in CI. Semantic comparison and evaluation are later
-milestones. The SDK is not on PyPI yet.
+Recording, upload, replay, deterministic and opt-in semantic comparison, and
+regression suites are implemented, and suites run in CI. Evaluation is a later
+milestone.
